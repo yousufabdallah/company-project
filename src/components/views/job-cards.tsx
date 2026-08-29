@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApp } from "@/lib/store";
 import { useMemo, useState } from "react";
-import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock } from "lucide-react";
+import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check } from "lucide-react";
 
 const STATUSES = ["draft", "waiting_approval", "approved", "in_progress", "waiting_parts", "waiting_customer", "quality_check", "completed", "ready_for_delivery", "delivered", "cancelled"];
 
@@ -279,13 +279,17 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedParts, setSelectedParts] = useState<Record<string, number>>({});
 
-  const vehicles = (cust?.items || []).find((c: any) => c.id === customerId)?.vehicles || [];
+  const customers = cust?.items || [];
+  const services = svc?.items || [];
+  const allParts = parts?.items || [];
+  const selectedCustomer = customers.find((c: any) => c.id === customerId) || null;
+  const vehicles = selectedCustomer?.vehicles || [];
 
   const calc = useMemo(() => {
-    const svcs = (svc?.items || []).filter((s: any) => selectedServices.includes(s.id));
+    const svcs = services.filter((s: any) => selectedServices.includes(s.id));
     const laborTotal = svcs.reduce((sum: number, s: any) => sum + s.price, 0);
     const partItems = Object.entries(selectedParts).map(([pid, qty]) => {
-      const p = (parts?.items || []).find((x: any) => x.id === pid);
+      const p = allParts.find((x: any) => x.id === pid);
       return p ? { ...p, qty } : null;
     }).filter(Boolean);
     const partsTotal = partItems.reduce((sum: number, p: any) => sum + p.sellingPrice * p.qty, 0);
@@ -293,7 +297,7 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     const tax = Math.round((subtotal * taxPercent) / 100 * 1000) / 1000;
     const grand = Math.round((subtotal + tax) * 1000) / 1000;
     return { svcs, partItems, laborTotal, partsTotal, tax, grand };
-  }, [selectedServices, selectedParts, svc, parts, taxPercent]);
+  }, [selectedServices, selectedParts, services, allParts, taxPercent]);
 
   const reset = () => {
     setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({});
@@ -303,12 +307,12 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     if (!customerId || !vehicleId || !complaint) return toastError(t("required"));
     setSaving(true);
     try {
-      const services = calc.svcs.map((s: any) => ({ serviceId: s.id, name: s.name, hours: s.durationHours, laborPrice: s.price, discount: 0, total: s.price }));
+      const servicesPayload = calc.svcs.map((s: any) => ({ serviceId: s.id, name: s.name, hours: s.durationHours, laborPrice: s.price, discount: 0, total: s.price }));
       const jobParts = calc.partItems.map((p: any) => ({ partId: p.id, quantity: p.qty, unitPrice: p.sellingPrice, discount: 0, total: p.sellingPrice * p.qty }));
       await fetch("/api/job-cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId, vehicleId, complaint, diagnosis, technicianId, priority, estimatedCompletion, services, parts: jobParts, status: "draft" }),
+        body: JSON.stringify({ customerId, vehicleId, complaint, diagnosis, technicianId, priority, estimatedCompletion, services: servicesPayload, parts: jobParts, status: "draft" }),
       });
       invalidate(["/api/job-cards", "/api/parts", "/api/dashboard"]);
       toastSuccess();
@@ -332,12 +336,12 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={`${t("customer")} *`}>
-              <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setVehicleId(""); }}>
-                <SelectTrigger><SelectValue placeholder={t("customer")} /></SelectTrigger>
-                <SelectContent>
-                  {(cust?.items || []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name} · {c.mobile}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <CustomerPicker
+                customers={customers}
+                selected={selectedCustomer}
+                onSelect={(c) => { setCustomerId(c.id); setVehicleId(""); }}
+                onClear={() => { setCustomerId(""); setVehicleId(""); }}
+              />
             </Field>
             <Field label={`${t("vehicle")} *`}>
               <Select value={vehicleId} onValueChange={setVehicleId} disabled={!customerId}>
@@ -366,52 +370,22 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </Field>
           </div>
 
-          {/* Services selection */}
-          <div>
-            <p className="mb-2 text-sm font-semibold">{t("services")}</p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-40 overflow-y-auto scroll-thin rounded-lg border p-2">
-              {(svc?.items || []).map((s: any) => (
-                <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded p-1.5 text-sm hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={selectedServices.includes(s.id)}
-                    onChange={(e) => setSelectedServices(e.target.checked ? [...selectedServices, s.id] : selectedServices.filter((x) => x !== s.id))}
-                    className="h-4 w-4 accent-primary"
-                  />
-                  <span className="flex-1 truncate">{s.name}</span>
-                  <span className="text-xs text-muted-foreground tnum">{formatMoney(s.price, "OMR", lang)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* Services — searchable list */}
+          <ServicePicker
+            services={services}
+            selected={selectedServices}
+            onToggle={(id) => setSelectedServices(selectedServices.includes(id) ? selectedServices.filter((x) => x !== id) : [...selectedServices, id])}
+            onClear={() => setSelectedServices([])}
+          />
 
-          {/* Parts selection */}
-          <div>
-            <p className="mb-2 text-sm font-semibold">{t("parts")}</p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-40 overflow-y-auto scroll-thin rounded-lg border p-2">
-              {(parts?.items || []).map((p: any) => (
-                <div key={p.id} className="flex items-center gap-2 rounded p-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={!!selectedParts[p.id]}
-                    onChange={(e) => setSelectedParts(e.target.checked ? { ...selectedParts, [p.id]: 1 } : ({ ...selectedParts, [p.id]: undefined }))}
-                    className="h-4 w-4 accent-primary shrink-0"
-                  />
-                  <span className="flex-1 truncate">{p.name}</span>
-                  {selectedParts[p.id] && (
-                    <input
-                      type="number"
-                      min={1}
-                      value={selectedParts[p.id]}
-                      onChange={(e) => setSelectedParts({ ...selectedParts, [p.id]: Math.max(1, Number(e.target.value)) })}
-                      className="h-7 w-14 rounded border bg-background px-1 text-xs tnum"
-                    />
-                  )}
-                  <span className="text-xs text-muted-foreground tnum">{formatMoney(p.sellingPrice, "OMR", lang)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Parts — searchable list */}
+          <PartPicker
+            parts={allParts}
+            selected={selectedParts}
+            onToggle={(id) => setSelectedParts(selectedParts[id] ? ({ ...selectedParts, [id]: undefined }) : { ...selectedParts, [id]: 1 })}
+            onQty={(id, qty) => setSelectedParts({ ...selectedParts, [id]: Math.max(1, qty) })}
+            onClear={() => setSelectedParts({})}
+          />
 
           {/* Totals */}
           <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
@@ -428,6 +402,208 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Customer Picker (search by name / phone / plate) ──────────
+function CustomerPicker({ customers, selected, onSelect, onClear }: { customers: any[]; selected: any; onSelect: (c: any) => void; onClear: () => void }) {
+  const { t, lang } = useT();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return customers.slice(0, 30);
+    return customers.filter((c) => {
+      const byName = c.name.toLowerCase().includes(q);
+      const byPhone = (c.mobile || "").toLowerCase().includes(q) || (c.whatsapp || "").toLowerCase().includes(q);
+      const byPlate = (c.vehicles || []).some((v: any) => (v.plateNumber || "").toLowerCase().includes(q));
+      return byName || byPhone || byPlate;
+    }).slice(0, 30);
+  }, [customers, query]);
+
+  // Selected customer card
+  if (selected) {
+    return (
+      <div className="flex items-start justify-between gap-2 rounded-lg border bg-muted/30 p-2.5">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{selected.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{t("mobile")}: {selected.mobile}</p>
+          <p className="truncate text-xs text-muted-foreground">{t("vehiclesCount")}: {selected.vehicles?.length ?? 0}</p>
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 text-xs" onClick={onClear}>{t("changeCustomer")}</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={t("searchCustomer")}
+          className="ps-9"
+          autoComplete="off"
+        />
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md max-h-64 overflow-y-auto scroll-thin">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("emptyHintCustomer")}</p>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onSelect(c); setQuery(""); setOpen(false); }}
+                className="flex w-full items-center gap-2.5 rounded px-2 py-2 text-start hover:bg-accent"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                  {c.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{c.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{c.mobile}</p>
+                </div>
+                {(c.vehicles?.length ?? 0) > 0 && (
+                  <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tnum">
+                    {c.vehicles.map((v: any) => v.plateNumber).join(" · ")}
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Service Picker (searchable list) ──────────────────────────
+function ServicePicker({ services, selected, onToggle, onClear }: { services: any[]; selected: string[]; onToggle: (id: string) => void; onClear: () => void }) {
+  const { t, lang } = useT();
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => s.name.toLowerCase().includes(q) || (s.code || "").toLowerCase().includes(q));
+  }, [services, query]);
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold">{t("services")} <span className="text-muted-foreground">({services.length})</span></p>
+        {selected.length > 0 && (
+          <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({selected.length})</button>
+        )}
+      </div>
+      <div className="relative mb-2">
+        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("searchServices")} className="ps-9" autoComplete="off" />
+      </div>
+      <div className="rounded-lg border max-h-44 overflow-y-auto scroll-thin divide-y">
+        {filtered.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("noData")}</p>
+        ) : (
+          filtered.map((s) => {
+            const isSel = selected.includes(s.id);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onToggle(s.id)}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-start text-sm transition-colors ${isSel ? "bg-primary/10" : "hover:bg-muted/50"}`}
+              >
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+                  {isSel && <Check className="h-3 w-3" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{s.name}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{s.code} · {s.durationHours}h</p>
+                </div>
+                <span className="shrink-0 text-xs font-semibold tnum">{formatMoney(s.price, "OMR", lang)}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+      {selected.length > 0 && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{t("selectedServices")}: <span className="font-semibold text-foreground tnum">{selected.length}</span></p>
+      )}
+    </div>
+  );
+}
+
+// ─── Part Picker (searchable list) ──────────────────────────────
+function PartPicker({ parts, selected, onToggle, onQty, onClear }: { parts: any[]; selected: Record<string, number>; onToggle: (id: string) => void; onQty: (id: string, qty: number) => void; onClear: () => void }) {
+  const { t, lang } = useT();
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return parts;
+    return parts.filter((p) => p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || (p.barcode || "").toLowerCase().includes(q));
+  }, [parts, query]);
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold">{t("parts")} <span className="text-muted-foreground">({parts.length})</span></p>
+        {selectedCount > 0 && (
+          <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({selectedCount})</button>
+        )}
+      </div>
+      <div className="relative mb-2">
+        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("searchParts")} className="ps-9" autoComplete="off" />
+      </div>
+      <div className="rounded-lg border max-h-44 overflow-y-auto scroll-thin divide-y">
+        {filtered.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("noData")}</p>
+        ) : (
+          filtered.map((p) => {
+            const qty = selected[p.id];
+            const isSel = !!qty;
+            const low = p.quantity <= p.minStock;
+            return (
+              <div key={p.id} className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${isSel ? "bg-primary/10" : "hover:bg-muted/50"}`}>
+                <button type="button" onClick={() => onToggle(p.id)} className="flex min-w-0 flex-1 items-center gap-2 text-start">
+                  <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+                    {isSel && <Check className="h-3 w-3" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{p.name}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">{p.sku} · {t("stockQty")}: <span className={low ? "text-amber-600 font-semibold" : ""}>{p.quantity}</span></p>
+                  </div>
+                </button>
+                {isSel && (
+                  <input
+                    type="number"
+                    min={1}
+                    value={qty}
+                    onChange={(e) => onQty(p.id, Number(e.target.value))}
+                    className="h-7 w-14 shrink-0 rounded border bg-background px-1 text-xs tnum"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+                <span className="shrink-0 text-xs font-semibold tnum">{formatMoney(p.sellingPrice, "OMR", lang)}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+      {selectedCount > 0 && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{t("selectedParts")}: <span className="font-semibold text-foreground tnum">{selectedCount}</span></p>
+      )}
+    </div>
   );
 }
 
