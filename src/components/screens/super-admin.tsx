@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { ShieldCheck, Building2, DollarSign, Clock, AlertTriangle, LogOut, Search, Wrench, CreditCard, Package, Settings2, Pencil, Plus, LogIn, Ban } from "lucide-react";
+import { ShieldCheck, Building2, DollarSign, Clock, AlertTriangle, LogOut, Search, Wrench, CreditCard, Package, Settings2, Pencil, Plus, LogIn, Ban, UserCog, Mail, Lock, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const PIE_COLORS = ["#0ea5e9", "#10b981", "#8b5cf6"];
@@ -83,11 +83,12 @@ export function SuperAdminScreen() {
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-5">
         {/* Tabs */}
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="overview"><Building2 className="h-3.5 w-3.5 me-1 inline" />{t("overview")}</TabsTrigger>
             <TabsTrigger value="tenants"><CreditCard className="h-3.5 w-3.5 me-1 inline" />{t("tenants")}</TabsTrigger>
             <TabsTrigger value="plans"><Package className="h-3.5 w-3.5 me-1 inline" />{t("plans")}</TabsTrigger>
             <TabsTrigger value="settings"><Settings2 className="h-3.5 w-3.5 me-1 inline" />{t("superSettings")}</TabsTrigger>
+            <TabsTrigger value="account"><UserCog className="h-3.5 w-3.5 me-1 inline" />{t("accountTab")}</TabsTrigger>
           </TabsList>
 
           {/* ─── Overview Tab ─── */}
@@ -271,6 +272,11 @@ export function SuperAdminScreen() {
           {/* ─── Platform Settings Tab ─── */}
           <TabsContent value="settings" className="mt-4">
             <PlatformSettingsForm settings={settingsData} onSaved={() => invalidate(["/api/super-admin/settings"])} />
+          </TabsContent>
+
+          {/* ─── Account Tab ─── */}
+          <TabsContent value="account" className="mt-4">
+            <AccountSettingsForm />
           </TabsContent>
         </Tabs>
       </div>
@@ -558,5 +564,139 @@ function PlatformSettingsForm({ settings, onSaved }: { settings: any; onSaved: (
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Account Settings Form (super admin email + password) ───────────
+function AccountSettingsForm() {
+  const { t } = useT();
+  const { toastSuccess, toastError } = useApiMutation();
+  const [profile, setProfile] = useState<any>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPw, setSavingPw] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/super-admin/account");
+        if (res.ok) {
+          const data = await res.json();
+          setProfile(data);
+          setNewEmail(data.email || "");
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  const saveEmail = async () => {
+    if (!newEmail.trim()) return toastError(t("required"));
+    setSavingEmail(true);
+    try {
+      const res = await fetch("/api/super-admin/account", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error === "email_in_use" ? t("emailInUse") : "Error");
+        return;
+      }
+      toastSuccess(t("emailUpdated"));
+      setProfile({ ...profile, email: data.email });
+      setCurrentPw(""); setNewPw("");
+    } catch { toastError("Error"); }
+    finally { setSavingEmail(false); }
+  };
+
+  const savePassword = async () => {
+    if (!currentPw || !newPw) return toastError(t("required"));
+    if (newPw.length < 6) return toastError(t("newPasswordHint"));
+    setSavingPw(true);
+    try {
+      const res = await fetch("/api/super-admin/account", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error === "wrong_password" ? t("wrongCurrentPassword") : data.error === "current_password_required" ? t("currentPassword") : "Error");
+        return;
+      }
+      toastSuccess(t("passwordUpdated"));
+      setCurrentPw(""); setNewPw("");
+    } catch { toastError("Error"); }
+    finally { setSavingPw(false); }
+  };
+
+  if (!profile) return <LoadingRows rows={5} />;
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      {/* Profile info */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><UserCog className="h-4 w-4" />{t("accountSettings")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 rounded-lg bg-muted/30 p-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">{profile.name}</p>
+              <p className="text-xs text-muted-foreground font-mono">{profile.email}</p>
+              <p className="text-[10px] text-muted-foreground capitalize">{profile.role.replace("_", " ")}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Update Email */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">{t("updateEmail")}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("userEmail")}</Label>
+            <div className="relative">
+              <Mail className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="ps-9" />
+            </div>
+          </div>
+          <Button size="sm" onClick={saveEmail} disabled={savingEmail || newEmail === profile.email}>
+            {savingEmail && <Loader2 className="h-4 w-4 animate-spin me-1" />}
+            {t("save")}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Update Password */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">{t("updatePassword")}</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("currentPassword")} *</Label>
+            <div className="relative">
+              <Lock className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} placeholder="••••••••" className="ps-9" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("newPassword")} *</Label>
+            <div className="relative">
+              <Lock className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="••••••••" className="ps-9" />
+            </div>
+            <p className="text-[10px] text-muted-foreground">{t("newPasswordHint")}</p>
+          </div>
+          <Button size="sm" onClick={savePassword} disabled={savingPw || !currentPw || !newPw}>
+            {savingPw && <Loader2 className="h-4 w-4 animate-spin me-1" />}
+            {t("save")}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
