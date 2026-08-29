@@ -126,9 +126,12 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
 
   return (
     <div className="space-y-4">
-      {/* Print CSS — guarantees A4 page size + the invoice fills the page when printed */}
+      {/* Print CSS — guarantees A4 page size + the invoice fills the page when printed.
+          Radix Dialog uses fixed+translate centering + max-height + overflow-auto which break printing.
+          These rules neutralize all of that so the invoice flows naturally on A4. */}
       <style dangerouslySetInnerHTML={{ __html: `
         @page { size: A4; margin: 10mm; }
+
         @media print {
           html, body {
             background: #fff !important;
@@ -136,37 +139,71 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
             padding: 0 !important;
             font-size: 11px !important;
             color: #000 !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            /* Cancel Radix's scroll-lock (position:relative + overflow:hidden + height) */
+            position: static !important;
+            inset: auto !important;
+            top: auto !important;
+            left: auto !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          /* Hide everything in the body by default */
+
+          /* 1. Hide everything under <body> by default */
           body > * { display: none !important; }
-          /* Show only the dialog (Radix mounts it directly under body) */
-          body > [role="dialog"],
-          body > [data-slot="dialog-content"],
-          [data-slot="dialog-content"],
-          [role="dialog"] {
+
+          /* 2. Show only the open dialog (Radix mounts [role=dialog][data-state=open] directly under body) */
+          [role="dialog"][data-state="open"],
+          body > [role="dialog"][data-state="open"] {
             display: block !important;
+          }
+
+          /* 3. Neutralize all of Radix's positioning — make it static, full-width, no transform */
+          [role="dialog"],
+          [data-slot="dialog-content"],
+          [data-slot="dialog-overlay"] {
             position: static !important;
             top: auto !important;
             left: auto !important;
+            right: auto !important;
+            bottom: auto !important;
+            inset: auto !important;
             transform: none !important;
+            translate: none !important;
+            rotate: none !important;
+            scale: none !important;
             margin: 0 !important;
             padding: 0 !important;
             max-width: 100% !important;
             max-height: none !important;
             width: 100% !important;
+            height: auto !important;
             overflow: visible !important;
             background: #fff !important;
             border: none !important;
             box-shadow: none !important;
             border-radius: 0 !important;
+            z-index: auto !important;
+            display: block !important;
           }
-          /* Reset the dialog's scroll wrapper so the invoice shows inline */
+
+          /* 4. Hide the dark overlay (don't print the modal backdrop) */
+          [data-slot="dialog-overlay"] {
+            display: none !important;
+          }
+
+          /* 5. Hide the close button + dialog header (no-print) */
+          [data-slot="dialog-close"],
+          .no-print {
+            display: none !important;
+          }
+
+          /* 6. Show all children of the dialog + the print-area normally */
           [role="dialog"] > * { display: block !important; }
-          /* Hide anything marked no-print (buttons, dialog header, etc.) */
-          .no-print { display: none !important; }
-          /* The printable invoice: expand to full A4 width */
+
           .print-area {
             position: static !important;
             display: block !important;
@@ -178,13 +215,13 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
             width: 100% !important;
             max-width: 100% !important;
           }
-          /* Avoid breaking tables across pages */
-          table, tr, td, th {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
+
+          /* 7. Don't break tables/images across pages */
+          table, tr, td, th { page-break-inside: avoid; break-inside: avoid; }
           thead { display: table-header-group; }
           img { max-width: 100% !important; }
+
+          /* 8. Crisp black headings on paper */
           h1, h2, h3, h4 { color: #000 !important; }
         }
       ` }} />
