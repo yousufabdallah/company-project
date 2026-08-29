@@ -293,7 +293,7 @@ function BrandingUploader({
         {value ? (
           <div className="flex items-center gap-3">
             <div className={`flex shrink-0 items-center justify-center rounded bg-muted/50 ${isLogo ? "h-16 w-16" : "h-20 w-20"}`}>
-              <img src={value + "?t=" + Date.now()} alt={label} className={isLogo ? "max-h-14 max-w-14 object-contain" : "max-h-18 max-w-18 object-contain opacity-90"} key={value} />
+              <img src={value} alt={label} className={isLogo ? "max-h-14 max-w-14 object-contain" : "max-h-18 max-w-18 object-contain opacity-90"} key={value} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs text-muted-foreground font-mono">{value}</p>

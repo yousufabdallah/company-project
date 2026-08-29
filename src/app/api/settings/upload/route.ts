@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filepath, buffer);
 
-  const url = `/uploads/${filename}`;
+  const url = `/api/serve-file?path=/uploads/${filename}`;
 
   // Persist the URL on the tenant
   await db.tenant.update({
