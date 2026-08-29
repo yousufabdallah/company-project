@@ -310,6 +310,7 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [priority, setPriority] = useState("normal");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [customServices, setCustomServices] = useState<Array<{ id: string; name: string; price: number }>>([]);
   const [selectedParts, setSelectedParts] = useState<Record<string, number>>({});
 
   const customers = cust?.items || [];
@@ -320,7 +321,9 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   const calc = useMemo(() => {
     const svcs = services.filter((s: any) => selectedServices.includes(s.id));
-    const laborTotal = svcs.reduce((sum: number, s: any) => sum + s.price, 0);
+    const catalogLabor = svcs.reduce((sum: number, s: any) => sum + s.price, 0);
+    const customLabor = customServices.reduce((sum: number, c) => sum + (Number(c.price) || 0), 0);
+    const laborTotal = catalogLabor + customLabor;
     const partItems = Object.entries(selectedParts).map(([pid, qty]) => {
       const p = allParts.find((x: any) => x.id === pid);
       return p ? { ...p, qty } : null;
@@ -329,18 +332,21 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     const subtotal = laborTotal + partsTotal;
     const tax = Math.round((subtotal * taxPercent) / 100 * 1000) / 1000;
     const grand = Math.round((subtotal + tax) * 1000) / 1000;
-    return { svcs, partItems, laborTotal, partsTotal, tax, grand };
-  }, [selectedServices, selectedParts, services, allParts, taxPercent]);
+    return { svcs, partItems, laborTotal, partsTotal, tax, grand, customLabor };
+  }, [selectedServices, selectedParts, services, allParts, taxPercent, customServices]);
 
   const reset = () => {
-    setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({});
+    setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({}); setCustomServices([]);
   };
 
   const submit = async () => {
     if (!customerId || !vehicleId || !complaint) return toastError(t("required"));
     setSaving(true);
     try {
-      const servicesPayload = calc.svcs.map((s: any) => ({ serviceId: s.id, name: s.name, hours: s.durationHours, laborPrice: s.price, discount: 0, total: s.price }));
+      const servicesPayload = [
+        ...calc.svcs.map((s: any) => ({ serviceId: s.id, name: s.name, hours: s.durationHours, laborPrice: s.price, discount: 0, total: s.price })),
+        ...customServices.map((c) => ({ serviceId: null, name: c.name, hours: 0, laborPrice: Number(c.price) || 0, discount: 0, total: Number(c.price) || 0 })),
+      ];
       const jobParts = calc.partItems.map((p: any) => ({ partId: p.id, quantity: p.qty, unitPrice: p.sellingPrice, discount: 0, total: p.sellingPrice * p.qty }));
       await fetch("/api/job-cards", {
         method: "POST",
@@ -409,6 +415,12 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             selected={selectedServices}
             onToggle={(id) => setSelectedServices(selectedServices.includes(id) ? selectedServices.filter((x) => x !== id) : [...selectedServices, id])}
             onClear={() => setSelectedServices([])}
+          />
+
+          {/* Other Services — custom name + manual price */}
+          <CustomServicesEditor
+            services={customServices}
+            onChange={setCustomServices}
           />
 
           {/* Parts — searchable list */}
@@ -645,6 +657,101 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+// ─── Custom Services editor (manual name + price) ──────────────
+function CustomServicesEditor({ services, onChange }: {
+  services: Array<{ id: string; name: string; price: number }>;
+  onChange: (services: Array<{ id: string; name: string; price: number }>) => void;
+}) {
+  const { t, lang } = useT();
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+
+  const add = () => {
+    if (!name.trim()) return;
+    const newService = { id: `custom-${Date.now()}`, name: name.trim(), price: Number(price) || 0 };
+    onChange([...services, newService]);
+    setName("");
+    setPrice("");
+  };
+
+  const remove = (id: string) => onChange(services.filter((s) => s.id !== id));
+
+  const update = (id: string, field: "name" | "price", value: string) => {
+    onChange(services.map((s) => s.id === id ? { ...s, [field]: field === "price" ? (Number(value) || 0) : value } : s));
+  };
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold">{t("otherServices")} <span className="text-muted-foreground">({services.length})</span></p>
+        {services.length > 0 && (
+          <button type="button" onClick={() => onChange([])} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({services.length})</button>
+        )}
+      </div>
+      <p className="mb-2 text-[10px] text-muted-foreground">{t("otherServicesHint")}</p>
+
+      {/* Add new custom service row */}
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("customServiceNamePlaceholder")}
+          className="h-8 flex-1 text-xs"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+        />
+        <div className="relative w-28">
+          <Input
+            type="number"
+            step="0.001"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="0.000"
+            className="h-8 text-end text-xs tnum"
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          />
+          <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">OMR</span>
+        </div>
+        <Button type="button" size="sm" className="h-8 shrink-0" onClick={add} disabled={!name.trim()}>
+          <Plus className="h-3.5 w-3.5 me-1" />{t("add")}
+        </Button>
+      </div>
+
+      {/* List of added custom services */}
+      {services.length === 0 ? (
+        <p className="mt-2 text-center text-xs text-muted-foreground py-3">{t("noCustomServices")}</p>
+      ) : (
+        <div className="mt-2 space-y-1.5">
+          {services.map((s) => (
+            <div key={s.id} className="flex items-center gap-2 rounded-lg border bg-card p-2">
+              <Input
+                value={s.name}
+                onChange={(e) => update(s.id, "name", e.target.value)}
+                className="h-7 flex-1 text-xs"
+              />
+              <div className="relative w-28">
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={s.price}
+                  onChange={(e) => update(s.id, "price", e.target.value)}
+                  className="h-7 text-end text-xs tnum"
+                />
+                <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">OMR</span>
+              </div>
+              <span className="w-20 text-end text-xs font-semibold tnum text-primary">
+                {formatMoney(Number(s.price) || 0, "OMR", lang)}
+              </span>
+              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => remove(s.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
