@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApp } from "@/lib/store";
+import { usePermissions } from "@/lib/use-permissions";
 import { useMemo, useState } from "react";
 import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check, Receipt, FileText } from "lucide-react";
 
@@ -23,6 +24,7 @@ export function JobCardsView() {
   const user = useApp((s) => s.user);
   const setView = useApp((s) => s.setView);
   const setFocusId = useApp((s) => s.setFocusId);
+  const { canCreate, canEdit } = usePermissions();
   const isTechnician = user?.role === "technician";
   const [scope, setScope] = useState<"mine" | "all">(isTechnician ? "mine" : "all");
   const [q, setQ] = useState("");
@@ -48,8 +50,8 @@ export function JobCardsView() {
   return (
     <div>
       <PageHeader title={t("jobCards")} subtitle={`${items.length} ${t("jobCards").toLowerCase()}`}>
-        {/* Technicians don't create job cards (advisors/owners do), so hide the button for them */}
-        {!isTechnician && (
+        {/* Show create button only if user has create permission and isn't a technician */}
+        {!isTechnician && canCreate("jobCards") && (
           <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
         )}
       </PageHeader>

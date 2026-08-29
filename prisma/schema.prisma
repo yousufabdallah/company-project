@@ -71,6 +71,7 @@ model User {
   role       String     @default("manager") // super_admin | owner | manager | advisor | technician | accountant | inventory
   phone      String?
   active     Boolean   @default(true)
+  permissions String?  @default("{}") // JSON: { "jobCards.view": true, "jobCards.create": false, ... }
   lastLoginAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

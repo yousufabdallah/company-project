@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApp } from "@/lib/store";
+import { usePermissions } from "@/lib/use-permissions";
 import { useState } from "react";
 import { Search, Plus, Phone, Mail, Car, Wrench, Receipt, Wallet, Users } from "lucide-react";
 
@@ -16,6 +17,7 @@ export function CustomersView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/customers");
   const setQuickCreate = useApp((s) => s.setQuickCreate);
+  const { canCreate } = usePermissions();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -30,7 +32,7 @@ export function CustomersView() {
   return (
     <div>
       <PageHeader title={t("customers")} subtitle={`${items.length} ${t("customers").toLowerCase()}`}>
-        <Button size="sm" onClick={() => setQuickCreate("customer")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {canCreate("customers") && <Button size="sm" onClick={() => setQuickCreate("customer")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>}
       </PageHeader>
 
       <Card>

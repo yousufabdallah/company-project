@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getTenantId } from "@/lib/api";
 import { hashPassword, getSession } from "@/lib/auth-server";
+import { getRoleDefaults } from "@/lib/permissions";
 import { NextResponse } from "next/server";
 
 const ROLES = ["owner", "manager", "advisor", "technician", "accountant", "inventory"];
@@ -19,9 +20,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const tenantId = await getTenantId();
   const body = await req.json();
-  const { name, email, phone, role, password, active } = body;
+  const { name, email, phone, role, password, active, permissions } = body;
 
-  // Get existing user
   const existing = await db.user.findFirst({ where: { id, tenantId } });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -38,7 +38,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (role !== undefined && ROLES.includes(role)) data.role = role;
   if (active !== undefined) data.active = active;
 
-  // Update password only if provided
+  // When role changes, reset permissions to that role's defaults (unless explicit permissions provided)
+  if (permissions !== undefined) {
+    data.permissions = JSON.stringify(permissions);
+  } else if (role !== undefined && role !== existing.role) {
+    data.permissions = JSON.stringify(getRoleDefaults(role));
+  }
+
   if (password && password.length >= 6) {
     data.password = await hashPassword(password);
   }
@@ -46,11 +52,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const user = await db.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, phone: true, role: true, active: true, lastLoginAt: true },
+    select: { id: true, name: true, email: true, phone: true, role: true, active: true, permissions: true, lastLoginAt: true },
   });
 
   await db.auditLog.create({ data: { tenantId, action: "user_updated", module: "users", record: user.email } });
-  return NextResponse.json(user);
+  return NextResponse.json({ ...user, permissions: JSON.parse(user.permissions) });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -60,13 +66,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const tenantId = await getTenantId();
 
-  // Cannot delete self
   if (id === session.id) return NextResponse.json({ error: "cannot_delete_self" }, { status: 400 });
 
   const existing = await db.user.findFirst({ where: { id, tenantId } });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Prevent deleting last owner
   if (existing.role === "owner") {
     const ownerCount = await db.user.count({ where: { tenantId, role: "owner", active: true } });
     if (ownerCount <= 1) return NextResponse.json({ error: "last_owner" }, { status: 400 });

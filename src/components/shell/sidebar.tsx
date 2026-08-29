@@ -3,6 +3,7 @@
 import { NAV } from "@/lib/nav";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/format";
+import { usePermissions } from "@/lib/use-permissions";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Wrench } from "lucide-react";
@@ -12,6 +13,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const view = useApp((s) => s.view);
   const setView = useApp((s) => s.setView);
   const { t } = useT();
+  const { canView } = usePermissions();
   const { data: tenant } = useApi<any>("/api/settings");
 
   return (
@@ -30,11 +32,14 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Nav */}
       <ScrollArea className="flex-1 px-2 py-3 scroll-thin">
         <nav className="space-y-4">
-          {NAV.map((group) => (
+          {NAV.map((group) => {
+            const visibleItems = group.items.filter((item) => canView(item.key));
+            if (visibleItems.length === 0) return null;
+            return (
             <div key={group.titleKey}>
               <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t(group.titleKey)}</p>
               <ul className="space-y-0.5">
-                {group.items.map((item) => {
+                {group.items.filter((item) => canView(item.key)).map((item) => {
                   const active = view === item.key;
                   const Icon = item.icon;
                   return (
@@ -59,7 +64,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 })}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </nav>
       </ScrollArea>
 

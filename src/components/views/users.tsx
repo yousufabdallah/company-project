@@ -1,30 +1,24 @@
 "use client";
 
-import { useT, formatDate, formatDateTime } from "@/lib/format";
+import { useT, formatDate } from "@/lib/format";
 import { useApi, useApiMutation, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
 import { useApp } from "@/lib/store";
+import { MODULES, getRoleDefaults, type Action } from "@/lib/permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { UsersRound, Plus, Pencil, Trash2, ShieldCheck, Loader2, Mail, Phone, UserCheck, UserX } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { UsersRound, Plus, Pencil, Trash2, ShieldCheck, Loader2, Mail, Phone, UserCheck, UserX, RotateCcw, CheckSquare, Square } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 const ROLES = ["owner", "manager", "advisor", "technician", "accountant", "inventory"];
-
-const ROLE_META: Record<string, { icon: any; color: string }> = {
-  owner: { icon: ShieldCheck, color: "bg-primary text-primary-foreground" },
-  manager: { icon: UsersRound, color: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300" },
-  advisor: { icon: UserCheck, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
-  technician: { icon: UserCheck, color: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
-  accountant: { icon: UserCheck, color: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" },
-  inventory: { icon: UserCheck, color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
-};
 
 export function UsersView() {
   const { t, lang } = useT();
@@ -52,14 +46,12 @@ export function UsersView() {
       {/* Role overview cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 mb-5">
         {ROLES.map((role) => {
-          const Icon = ROLE_META[role]?.icon || UserCheck;
           const count = byRole[role] || 0;
-          const cls = ROLE_META[role]?.color || "bg-muted text-muted-foreground";
           return (
             <Card key={role} className="hover:shadow-sm transition-shadow">
               <CardContent className="p-3 text-center">
-                <div className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full ${cls}`}>
-                  <Icon className="h-4 w-4" />
+                <div className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full ${role === "owner" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  <ShieldCheck className="h-4 w-4" />
                 </div>
                 <p className="mt-1.5 text-lg font-bold tnum">{count}</p>
                 <p className="text-[10px] text-muted-foreground truncate">{t("role" + role.charAt(0).toUpperCase() + role.slice(1))}</p>
@@ -90,8 +82,6 @@ export function UsersView() {
                 </TableHeader>
                 <TableBody>
                   {users.map((u: any) => {
-                    const roleIcon = ROLE_META[u.role]?.icon || UserCheck;
-                    const roleCls = ROLE_META[u.role]?.color || "bg-muted";
                     const isSelf = u.id === user?.id || u.email === user?.email;
                     return (
                       <TableRow key={u.id}>
@@ -109,7 +99,7 @@ export function UsersView() {
                         <TableCell className="hidden md:table-cell text-xs text-muted-foreground font-mono">{u.email}</TableCell>
                         <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">{u.phone || "—"}</TableCell>
                         <TableCell>
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${roleCls}`}>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${u.role === "owner" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                             {t("role" + u.role.charAt(0).toUpperCase() + u.role.slice(1))}
                           </span>
                         </TableCell>
@@ -126,32 +116,29 @@ export function UsersView() {
                           )}
                         </TableCell>
                         <TableCell className="text-end">
-                          {canManage && !isSelf && (
+                          {canManage && (
                             <div className="flex items-center justify-end gap-1">
                               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(u)}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={async () => {
-                                if (!confirm(t("confirmDelete"))) return;
-                                try {
-                                  const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
-                                  if (!res.ok) {
-                                    const err = await res.json();
-                                    toastError(err.error === "cannot_delete_self" ? t("cannotDeleteSelf") : err.error === "last_owner" ? t("cannotDeleteLastOwner") : "Error");
-                                    return;
-                                  }
-                                  invalidate(["/api/users"]);
-                                  toastSuccess(t("userDeleted"));
-                                } catch { toastError("Error"); }
-                              }}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              {!isSelf && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={async () => {
+                                  if (!confirm(t("confirmDelete"))) return;
+                                  try {
+                                    const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+                                    if (!res.ok) {
+                                      const err = await res.json();
+                                      toastError(err.error === "cannot_delete_self" ? t("cannotDeleteSelf") : err.error === "last_owner" ? t("cannotDeleteLastOwner") : "Error");
+                                      return;
+                                    }
+                                    invalidate(["/api/users"]);
+                                    toastSuccess(t("userDeleted"));
+                                  } catch { toastError("Error"); }
+                                }}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
-                          )}
-                          {canManage && isSelf && (
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(u)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -176,10 +163,15 @@ export function UsersView() {
   );
 }
 
-// ─── User Create/Edit Dialog ──────────────────────────────────
+// ─── User Create/Edit Dialog with Permissions Matrix ────────────
 function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
   const { t } = useT();
   const { toastSuccess, toastError } = useApiMutation();
+  const isEdit = !!user;
+
+  // Parse existing permissions or use role defaults
+  const initialPerms = user?.permissions || getRoleDefaults(user?.role || "advisor");
+
   const [form, setForm] = useState({
     name: user?.name || "",
     email: user?.email || "",
@@ -188,8 +180,26 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
     password: "",
     active: user?.active ?? true,
   });
+  const [perms, setPerms] = useState<Record<string, boolean>>(initialPerms);
   const [saving, setSaving] = useState(false);
-  const isEdit = !!user;
+
+  // When role changes, reset permissions to that role's defaults
+  const onRoleChange = (newRole: string) => {
+    setForm({ ...form, role: newRole });
+    setPerms(getRoleDefaults(newRole));
+  };
+
+  const togglePerm = (module: string, action: Action) => {
+    setPerms({ ...perms, [`${module}.${action}`]: !perms[`${module}.${action}`] });
+  };
+
+  const setModuleAll = (module: string, value: boolean) => {
+    const mod = MODULES.find((m) => m.key === module);
+    if (!mod) return;
+    const updated = { ...perms };
+    mod.actions.forEach((a) => { updated[`${module}.${a}`] = value; });
+    setPerms(updated);
+  };
 
   const submit = async () => {
     if (!form.name.trim()) return toastError(t("required"));
@@ -200,7 +210,14 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
     try {
       const url = isEdit ? `/api/users/${user.id}` : "/api/users";
       const method = isEdit ? "PATCH" : "POST";
-      const body: any = { name: form.name, email: form.email, phone: form.phone, role: form.role, active: form.active };
+      const body: any = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        role: form.role,
+        active: form.active,
+        permissions: perms,
+      };
       if (form.password) body.password = form.password;
 
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -223,7 +240,7 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scroll-thin">
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto scroll-thin">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UsersRound className="h-5 w-5" />
@@ -233,14 +250,12 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* Name */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">{t("fullName")} *</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("fullName")} autoFocus />
-          </div>
-
-          {/* Email + Phone */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Basic info */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("fullName")} *</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("fullName")} autoFocus />
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t("userEmail")} *</Label>
               <div className="relative">
@@ -255,35 +270,24 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+968 ..." className="ps-9" />
               </div>
             </div>
-          </div>
-
-          {/* Role selector */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">{t("userRole")} *</Label>
-            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ROLES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    <div className="flex flex-col">
-                      <span>{t("role" + r.charAt(0).toUpperCase() + r.slice(1))}</span>
-                      <span className="text-[10px] text-muted-foreground">{t("role" + r.charAt(0).toUpperCase() + r.slice(1) + "Desc")}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Role selector — simplified items (no nested elements to avoid Radix issues) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("userRole")} *</Label>
+              <Select value={form.role} onValueChange={onRoleChange}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>{t("role" + r.charAt(0).toUpperCase() + r.slice(1))}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Password */}
           <div className="space-y-1.5">
             <Label className="text-xs">{t("userPassword")} {!isEdit && "*"}</Label>
-            <Input
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder={isEdit ? "••••••••" : "Min 6 characters"}
-            />
+            <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={isEdit ? "••••••••" : "Min 6 characters"} />
             <p className="text-[10px] text-muted-foreground">{t("userPasswordHint")}</p>
           </div>
 
@@ -294,6 +298,50 @@ function UserDialog({ user, onClose, onSaved }: { user: any; onClose: () => void
               <p className="text-[11px] text-muted-foreground">{t("userActiveDesc")}</p>
             </div>
             <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
+          </div>
+
+          {/* Permissions Matrix */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-semibold">{t("permissions")}</Label>
+                <p className="text-[11px] text-muted-foreground">{t("permissionsDesc")}</p>
+              </div>
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setPerms(getRoleDefaults(form.role))}>
+                <RotateCcw className="h-3 w-3 me-1" />{t("resetToDefault")}
+              </Button>
+            </div>
+
+            <div className="rounded-lg border overflow-hidden">
+              {/* Header row */}
+              <div className="grid grid-cols-[1fr_repeat(4,auto)] gap-1 bg-muted/50 p-2 items-center">
+                <span className="text-[10px] font-semibold text-muted-foreground ps-1">{t("module")}</span>
+                <span className="text-[10px] font-medium text-muted-foreground text-center w-10">{t("permView")}</span>
+                <span className="text-[10px] font-medium text-muted-foreground text-center w-10">{t("permCreate")}</span>
+                <span className="text-[10px] font-medium text-muted-foreground text-center w-10">{t("permEdit")}</span>
+                <span className="text-[10px] font-medium text-muted-foreground text-center w-10">{t("permDelete")}</span>
+              </div>
+              {/* Module rows */}
+              <div className="max-h-64 overflow-y-auto scroll-thin">
+                {MODULES.filter((m) => m.actions.length > 0).map((m) => (
+                  <div key={m.key} className="grid grid-cols-[1fr_repeat(4,auto)] gap-1 p-2 items-center border-t border-border/50 hover:bg-muted/30">
+                    <span className="text-xs font-medium ps-1 truncate">{t(m.labelKey)}</span>
+                    {(["view", "create", "edit", "delete"] as Action[]).map((action) => (
+                      <div key={action} className="flex justify-center w-10">
+                        {m.actions.includes(action) ? (
+                          <Checkbox
+                            checked={perms[`${m.key}.${action}`] || false}
+                            onCheckedChange={() => togglePerm(m.key, action)}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Actions */}
