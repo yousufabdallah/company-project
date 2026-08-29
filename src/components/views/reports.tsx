@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { BarChart3, Printer, Wallet, TrendingUp, Users, Car, Package, Wrench, Calendar } from "lucide-react";
+import { BarChart3, Printer, Wallet, TrendingUp, Users, Car, Package, Wrench, Calendar, FileSpreadsheet } from "lucide-react";
 import { useMemo, useState } from "react";
+import { exportToExcel } from "@/lib/excel-export";
 
 const PIE_COLORS = ["#0ea5e9", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#14b8a6", "#f43f5e", "#6366f1"];
 
@@ -25,10 +26,90 @@ export function ReportsView() {
   }
   const s = data.summary;
 
+  // Export the full financial summary to Excel
+  const exportFullReport = () => {
+    const summaryRows = [
+      { metric: t("revenue"), value: s.revenue },
+      { metric: t("expensesTotal"), value: s.expenses },
+      { metric: t("grossProfit"), value: s.grossProfit },
+      { metric: t("netProfit"), value: s.netProfit },
+      { metric: t("stockValue"), value: s.stockValue },
+      { metric: t("invoices"), value: s.invoices },
+      { metric: t("customers"), value: s.customers },
+      { metric: t("jobCards"), value: s.jobCards },
+    ];
+    const summaryCols = [
+      { header: t("reportPeriod") || "Metric", key: "metric" },
+      { header: t("amount"), key: "value", format: (v: any) => v },
+    ];
+    exportToExcel(summaryRows, summaryCols, `financial-summary-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for top customers
+  const exportTopCustomers = () => {
+    const cols = [
+      { header: t("customerName"), key: "name" },
+      { header: t("totalSpent"), key: "total", format: (v: any) => Number(v).toFixed(3) + " OMR" },
+    ];
+    exportToExcel(data.topCustomers || [], cols, `top-customers-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for most serviced vehicles
+  const exportMostServicedVehicles = () => {
+    const cols = [
+      { header: t("vehicle"), key: "label" },
+      { header: t("jobCards"), key: "count" },
+      { header: t("totalSpent"), key: "spent", format: (v: any) => Number(v).toFixed(3) + " OMR" },
+    ];
+    exportToExcel(data.mostServicedVehicles || [], cols, `most-serviced-vehicles-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for sales by technician
+  const exportSalesByTechnician = () => {
+    const cols = [
+      { header: t("technician"), key: "name" },
+      { header: t("revenue"), key: "total", format: (v: any) => Number(v).toFixed(3) + " OMR" },
+    ];
+    exportToExcel(data.salesByTechnician || [], cols, `sales-by-technician-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for low stock parts
+  const exportLowStock = () => {
+    const cols = [
+      { header: t("name"), key: "name" },
+      { header: t("sku"), key: "sku" },
+      { header: t("stockQty"), key: "quantity" },
+      { header: t("minStock"), key: "minStock" },
+    ];
+    exportToExcel(data.lowStock || [], cols, `low-stock-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for fast/slow moving parts
+  const exportPartsMovement = () => {
+    const fast = (data.fastMovingParts || []).map((p: any) => ({ ...p, category: t("fastMovingParts") }));
+    const slow = (data.slowMovingParts || []).map((p: any) => ({ ...p, category: t("slowMovingParts") }));
+    const cols = [
+      { header: t("name"), key: "name" },
+      { header: t("category"), key: "category" },
+      { header: t("serviceCount") || "Moved", key: "moved" },
+    ];
+    exportToExcel([...fast, ...slow], cols, `parts-movement-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  // Export helper for expenses by category
+  const exportExpenses = () => {
+    const cols = [
+      { header: t("expenseCategory"), key: "category" },
+      { header: t("total"), key: "total", format: (v: any) => Number(v).toFixed(3) + " OMR" },
+    ];
+    exportToExcel(data.expensesByCategory || [], cols, `expenses-by-category-${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div>
       <PageHeader title={t("reports")} subtitle={t("reports")}>
         <Button size="sm" variant="outline" onClick={() => window.print()} className="no-print"><Printer className="h-4 w-4 me-1" />{t("print")}</Button>
+        <Button size="sm" variant="outline" onClick={() => exportFullReport()} className="no-print"><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")}</Button>
       </PageHeader>
 
       {/* Summary cards */}
@@ -50,6 +131,10 @@ export function ReportsView() {
 
         {/* Sales */}
         <TabsContent value="sales" className="space-y-4">
+          <div className="flex justify-end gap-2 no-print">
+            <Button size="sm" variant="outline" onClick={exportSalesByTechnician}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("salesByTechnician")}</Button>
+            <Button size="sm" variant="outline" onClick={exportMostServicedVehicles}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("mostServicedVehicles")}</Button>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4" />{t("salesByTechnician")}</CardTitle></CardHeader>
@@ -85,6 +170,9 @@ export function ReportsView() {
 
         {/* Customers */}
         <TabsContent value="customers" className="space-y-4">
+          <div className="flex justify-end gap-2 no-print">
+            <Button size="sm" variant="outline" onClick={exportTopCustomers}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("topCustomers")}</Button>
+          </div>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" />{t("topCustomers")}</CardTitle></CardHeader>
             <CardContent>
@@ -104,6 +192,10 @@ export function ReportsView() {
 
         {/* Inventory */}
         <TabsContent value="inventory" className="space-y-4">
+          <div className="flex justify-end gap-2 no-print">
+            <Button size="sm" variant="outline" onClick={exportLowStock}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("lowStockParts")}</Button>
+            <Button size="sm" variant="outline" onClick={exportPartsMovement}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("stockMovement")}</Button>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">{t("fastMovingParts")}</CardTitle></CardHeader>
@@ -153,6 +245,10 @@ export function ReportsView() {
 
         {/* Financial */}
         <TabsContent value="financial" className="space-y-4">
+          <div className="flex justify-end gap-2 no-print">
+            <Button size="sm" variant="outline" onClick={exportExpenses}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("expenseCategory")}</Button>
+            <Button size="sm" variant="outline" onClick={exportFullReport}><FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")} - {t("groupFinance")}</Button>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">{t("expensesTotal")} — {t("expenseCategory")}</CardTitle></CardHeader>
@@ -429,8 +525,21 @@ function ServicesReport() {
           )}
         </div>
 
-        {/* Print button (no-print) */}
-        <div className="no-print flex justify-end">
+        {/* Print + Export buttons (no-print) */}
+        <div className="no-print flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => {
+            if (!data) return;
+            const cols = [
+              { header: t("serviceName") || "Service", key: "name" },
+              { header: t("category"), key: "isCustom", format: (v: any) => (v ? t("customServices") : t("catalogServices")) },
+              { header: t("serviceCount"), key: "count" },
+              { header: t("avgServicePrice"), key: "revenue", format: (_v: any, row: any) => (row.count > 0 ? (row.revenue / row.count).toFixed(3) + " OMR" : "0.000 OMR") },
+              { header: t("serviceRevenue"), key: "revenue", format: (v: any) => Number(v).toFixed(3) + " OMR" },
+            ];
+            exportToExcel(data.services, cols, `services-report-${new Date().toISOString().slice(0, 10)}`);
+          }}>
+            <FileSpreadsheet className="h-4 w-4 me-1" />{t("exportExcel")}
+          </Button>
           <Button size="sm" variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 me-1" />{t("printReport")}
           </Button>
