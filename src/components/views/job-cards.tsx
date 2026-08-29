@@ -10,15 +10,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApp } from "@/lib/store";
 import { useMemo, useState } from "react";
-import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check } from "lucide-react";
+import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check, Receipt, FileText } from "lucide-react";
 
 const STATUSES = ["draft", "waiting_approval", "approved", "in_progress", "waiting_parts", "waiting_customer", "quality_check", "completed", "ready_for_delivery", "delivered", "cancelled"];
 
 export function JobCardsView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/job-cards");
+  const user = useApp((s) => s.user);
+  const setView = useApp((s) => s.setView);
+  const setFocusId = useApp((s) => s.setFocusId);
+  const isTechnician = user?.role === "technician";
+  const [scope, setScope] = useState<"mine" | "all">(isTechnician ? "mine" : "all");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [creating, setCreating] = useState(false);
@@ -26,6 +32,12 @@ export function JobCardsView() {
 
   const money = (n: number) => formatMoney(n, "OMR", lang);
   const items = (data?.items || []).filter((j: any) => {
+    // Technicians default to seeing only their assigned jobs, but can switch to "All".
+    // Match by technician id OR by technician email (covers demo users).
+    if (scope === "mine") {
+      const assignedToMe = j.technicianId === user?.id || (user?.email && j.technician?.email === user.email);
+      if (!assignedToMe) return false;
+    }
     if (statusFilter !== "all" && j.status !== statusFilter) return false;
     if (q && !j.code.toLowerCase().includes(q.toLowerCase()) && !j.customer?.name.toLowerCase().includes(q.toLowerCase()) && !j.vehicle?.plateNumber.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
@@ -36,12 +48,24 @@ export function JobCardsView() {
   return (
     <div>
       <PageHeader title={t("jobCards")} subtitle={`${items.length} ${t("jobCards").toLowerCase()}`}>
-        <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {/* Technicians don't create job cards (advisors/owners do), so hide the button for them */}
+        {!isTechnician && (
+          <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        )}
       </PageHeader>
 
       <Card>
         <CardContent className="p-3 sm:p-4">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            {/* Scope toggle: My Jobs vs All Jobs (technicians only — others always see All) */}
+            {isTechnician && (
+              <Tabs value={scope} onValueChange={(v) => setScope(v as "mine" | "all")}>
+                <TabsList className="h-9">
+                  <TabsTrigger value="mine" className="text-xs px-3">{t("myJobs")}</TabsTrigger>
+                  <TabsTrigger value="all" className="text-xs px-3">{t("allJobs")}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} className="ps-9" />
@@ -58,7 +82,7 @@ export function JobCardsView() {
           {isLoading ? (
             <LoadingRows />
           ) : items.length === 0 ? (
-            <EmptyState title={t("noResults")} icon={Wrench} />
+            <EmptyState title={scope === "mine" ? t("noAssignedJobs") : t("noResults")} icon={Wrench} />
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -69,6 +93,7 @@ export function JobCardsView() {
                     <TableHead className="hidden md:table-cell">{t("complaint")}</TableHead>
                     <TableHead className="hidden lg:table-cell">{t("technician")}</TableHead>
                     <TableHead>{t("status")}</TableHead>
+                    <TableHead className="hidden sm:table-cell text-center">{t("invoice")}</TableHead>
                     <TableHead className="text-end">{t("grandTotal")}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -83,6 +108,17 @@ export function JobCardsView() {
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-xs truncate">{j.complaint}</TableCell>
                       <TableCell className="hidden lg:table-cell text-xs">{j.technician?.name || "—"}</TableCell>
                       <TableCell><StatusBadge status={j.status} /></TableCell>
+                      {/* Auto-invoice indicator */}
+                      <TableCell className="hidden sm:table-cell text-center">
+                        {j.invoice ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" title={t("autoInvoiceCreated")}>
+                            <Receipt className="h-3 w-3" />
+                            <span className="font-mono tnum">{j.invoice.code}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-end font-semibold tnum">{money(j.grandTotal)}</TableCell>
                     </TableRow>
                   ))}
@@ -106,14 +142,14 @@ export function JobCardsView() {
             </DialogTitle>
             <DialogDescription className="sr-only">{t("jobCards")}</DialogDescription>
           </DialogHeader>
-          {detail && <JobCardDetail jc={detail} money={money} onClose={() => setSelected(null)} />}
+          {detail && <JobCardDetail jc={detail} money={money} onClose={() => setSelected(null)} onOpenInvoice={(id) => { setFocusId(id); setView("invoices"); }} />}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function JobCardDetail({ jc, money, onClose }: { jc: any; money: (n: number) => string; onClose: () => void }) {
+function JobCardDetail({ jc, money, onClose, onOpenInvoice }: { jc: any; money: (n: number) => string; onClose: () => void; onOpenInvoice?: (id: string) => void }) {
   const { t, lang } = useT();
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [notes, setNotes] = useState(jc.diagnosis || "");
@@ -130,23 +166,6 @@ function JobCardDetail({ jc, money, onClose }: { jc: any; money: (n: number) => 
       invalidate(["/api/job-cards", "/api/dashboard", "/api/parts"]);
       toastSuccess();
       onClose();
-    } catch {
-      toastError("Error");
-    }
-  };
-
-  const generateInvoice = async () => {
-    try {
-      const items = [
-        ...jc.services.map((s: any) => ({ type: "service", name: s.name, quantity: 1, unitPrice: s.laborPrice, discount: s.discount || 0, total: s.total })),
-        ...jc.parts.map((p: any) => ({ type: "part", name: p.part.name, quantity: p.quantity, unitPrice: p.unitPrice, discount: p.discount || 0, total: p.total })),
-      ];
-      const res = await fetch("/api/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerId: jc.customerId, vehicleId: jc.vehicleId, jobCardId: jc.id, items, discount: jc.discount }) });
-      if (res.ok) {
-        toastSuccess(t("generateInvoice"));
-        invalidate(["/api/invoices", "/api/job-cards", "/api/dashboard"]);
-        onClose();
-      }
     } catch {
       toastError("Error");
     }
@@ -236,11 +255,25 @@ function JobCardDetail({ jc, money, onClose }: { jc: any; money: (n: number) => 
             <ArrowRight className="h-3.5 w-3.5 me-1" />{t("status_" + next)}
           </Button>
         )}
-        {(jc.status === "completed" || jc.status === "ready_for_delivery") && !jc.invoice && (
-          <Button size="sm" variant="default" onClick={generateInvoice}><Plus className="h-3.5 w-3.5 me-1" />{t("generateInvoice")}</Button>
-        )}
         <Button size="sm" variant="outline" className="ms-auto no-print" onClick={() => window.print()}><Printer className="h-3.5 w-3.5 me-1" />{t("print")}</Button>
       </div>
+
+      {/* Auto-invoice banner — the invoice is created automatically when the job card is created */}
+      {jc.invoice ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300/60 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+          <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{t("autoInvoiceCreated")}</p>
+            <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">{t("autoInvoiceHint")}</p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-mono text-xs font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 tnum">{jc.invoice.code}</span>
+          {onOpenInvoice && (
+            <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300" onClick={() => onOpenInvoice(jc.invoice.id)}>
+              <FileText className="h-3.5 w-3.5 me-1" />{t("viewInvoice")}
+            </Button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
