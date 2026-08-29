@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getTenantId, nextCode } from "@/lib/api";
+import { getTaxConfig, calculateTax, calculateGrandTotal } from "@/lib/tax";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -30,8 +31,9 @@ export async function POST(req: Request) {
   const partsTotal = parts.reduce((s, i) => s + Number(i.total), 0);
   const subtotal = laborTotal + partsTotal;
   const discount = Number(body.discount) || 0;
-  const tax = Math.round(((subtotal - discount) * (tenant?.taxPercent ?? 0)) / 100 * 1000) / 1000;
-  const grandTotal = Math.round((subtotal - discount + tax) * 1000) / 1000;
+  const taxConfig = await getTaxConfig(tenantId);
+  const tax = calculateTax(subtotal, discount, taxConfig);
+  const grandTotal = calculateGrandTotal(subtotal, discount, tax);
 
   const jc = await db.$transaction(async (tx) => {
     const job = await tx.jobCard.create({

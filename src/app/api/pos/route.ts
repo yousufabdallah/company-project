@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getTenantId, nextCode } from "@/lib/api";
+import { getTaxConfig, calculateTax, calculateGrandTotal } from "@/lib/tax";
 import { NextResponse } from "next/server";
 
 // GET /api/pos → today's POS sales summary + recent sales
@@ -52,8 +53,9 @@ export async function POST(req: Request) {
 
   const partsTotal = cartItems.reduce((s, i) => s + Number(i.total), 0);
   const discount = Number(body.discount) || 0;
-  const tax = Math.round(((partsTotal - discount) * (tenant?.taxPercent ?? 0)) / 100 * 1000) / 1000;
-  const grandTotal = Math.round((partsTotal - discount + tax) * 1000) / 1000;
+  const taxConfig = await getTaxConfig(tenantId);
+  const tax = calculateTax(partsTotal, discount, taxConfig);
+  const grandTotal = calculateGrandTotal(partsTotal, discount, tax);
   const paidAmount = Number(body.paidAmount) || grandTotal;
   const method = body.method || "cash";
   // Ensure a walk-in customer exists before the transaction (customerId is required on Invoice)

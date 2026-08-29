@@ -1,0 +1,577 @@
+     1→"use client";
+     2→
+     3→import { useT, formatMoney, formatDateTime } from "@/lib/format";
+     4→import { useApi, useApiMutation, EmptyState, LoadingRows } from "@/components/shared";
+     5→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Input } from "@/components/ui/input";
+     8→import { Label } from "@/components/ui/label";
+     9→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    10→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+    11→import { ScrollArea } from "@/components/ui/scroll-area";
+    12→import { useMemo, useState, useEffect } from "react";
+    13→import { ScanLine, Search, Plus, Minus, Trash2, ShoppingCart, CheckCircle2, Printer, X, Package, Receipt as ReceiptIcon, Banknote } from "lucide-react";
+    14→
+    15→interface CartItem {
+    16→  partId: string;
+    17→  name: string;
+    18→  sku: string;
+    19→  unitPrice: number;
+    20→  quantity: number;
+    21→  available: number;
+    22→}
+    23→
+    24→export function PosView() {
+    25→  const { t, lang } = useT();
+    26→  const { data: partsData, isLoading } = useApi<any>("/api/parts");
+    27→  const { data: custData } = useApi<any>("/api/customers");
+    28→  const { data: posData } = useApi<any>("/api/pos");
+    29→  const { data: settings } = useApi<any>("/api/settings");
+    30→  const { invalidate, toastSuccess, toastError } = useApiMutation();
+    31→  const taxPercent = settings?.taxPercent ?? 0;
+    32→  const currency = settings?.currency ?? "OMR";
+    33→
+    34→  const [query, setQuery] = useState("");
+    35→  const [categoryFilter, setCategoryFilter] = useState("all");
+    36→  const [cart, setCart] = useState<CartItem[]>([]);
+    37→  const [customerId, setCustomerId] = useState<string>("");
+    38→  const [discount, setDiscount] = useState<string>("");
+    39→  const [method, setMethod] = useState("cash");
+    40→  const [paidAmount, setPaidAmount] = useState<string>("");
+    41→  const [completing, setCompleting] = useState(false);
+    42→  const [receipt, setReceipt] = useState<any>(null);
+    43→  const [checkoutOpen, setCheckoutOpen] = useState(false);
+    44→
+    45→  const parts = (partsData?.items || []).filter((p: any) => p.quantity > 0);
+    46→  const categories = useMemo(() => {
+    47→    const set = new Map<string, string>();
+    48→    (partsData?.items || []).forEach((p: any) => {
+    49→      if (p.category?.name) set.set(p.category.id, p.category.name);
+    50→    });
+    51→    return [...set.entries()].map(([id, name]) => ({ id, name }));
+    52→  }, [partsData]);
+    53→
+    54→  const filtered = useMemo(() => {
+    55→    const q = query.trim().toLowerCase();
+    56→    return parts.filter((p: any) => {
+    57→      if (categoryFilter !== "all" && p.categoryId !== categoryFilter) return false;
+    58→      if (!q) return true;
+    59→      return p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || (p.barcode || "").toLowerCase().includes(q) || (p.nameAr || "").toLowerCase().includes(q);
+    60→    });
+    61→  }, [parts, query, categoryFilter]);
+    62→
+    63→  const money = (n: number) => formatMoney(n, currency, lang);
+    64→
+    65→  // Cart calculations
+    66→  const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+    67→  const discountNum = Number(discount) || 0;
+    68→  const tax = Math.round(((subtotal - discountNum) * taxPercent) / 100 * 1000) / 1000;
+    69→  const grand = Math.round((subtotal - discountNum + tax) * 1000) / 1000;
+    70→  const paid = paidAmount ? Number(paidAmount) : grand;
+    71→  const change = Math.max(0, paid - grand);
+    72→
+    73→  const addToCart = (p: any) => {
+    74→    setCart((prev) => {
+    75→      const existing = prev.find((i) => i.partId === p.id);
+    76→      if (existing) {
+    77→        if (existing.quantity >= p.quantity) {
+    78→          toastError(t("insufficientStock").replace("{name}", p.name));
+    79→          return prev;
+    80→        }
+    81→        return prev.map((i) => (i.partId === p.id ? { ...i, quantity: i.quantity + 1 } : i));
+    82→      }
+    83→      return [...prev, { partId: p.id, name: p.name, sku: p.sku, unitPrice: p.sellingPrice, quantity: 1, available: p.quantity }];
+    84→    });
+    85→  };
+    86→
+    87→  const updateQty = (partId: string, delta: number) => {
+    88→    setCart((prev) =>
+    89→      prev
+    90→        .map((i) => {
+    91→          if (i.partId !== partId) return i;
+    92→          const newQty = i.quantity + delta;
+    93→          if (newQty > i.available) {
+    94→            toastError(t("insufficientStock").replace("{name}", i.name));
+    95→            return i;
+    96→          }
+    97→          return { ...i, quantity: newQty };
+    98→        })
+    99→        .filter((i) => i.quantity > 0)
+   100→    );
+   101→  };
+   102→
+   103→  const setQty = (partId: string, qty: number) => {
+   104→    setCart((prev) =>
+   105→      prev.map((i) => {
+   106→        if (i.partId !== partId) return i;
+   107→        const clamped = Math.max(1, Math.min(qty, i.available));
+   108→        return { ...i, quantity: clamped };
+   109→      })
+   110→    );
+   111→  };
+   112→
+   113→  const removeFromCart = (partId: string) => setCart((prev) => prev.filter((i) => i.partId !== partId));
+   114→
+   115→  // Barcode scan: Enter on the search input adds the first match
+   116→  const onScanKey = (e: React.KeyboardEvent) => {
+   117→    if (e.key === "Enter" && filtered.length === 1) {
+   118→      addToCart(filtered[0]);
+   119→      setQuery("");
+   120→    }
+   121→  };
+   122→
+   123→  const completeSale = async () => {
+   124→    if (cart.length === 0) return toastError(t("cartEmpty"));
+   125→    setCompleting(true);
+   126→    try {
+   127→      const res = await fetch("/api/pos", {
+   128→        method: "POST",
+   129→        headers: { "Content-Type": "application/json" },
+   130→        body: JSON.stringify({
+   131→          items: cart.map((i) => ({ partId: i.partId, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, total: i.unitPrice * i.quantity })),
+   132→          customerId: customerId || null,
+   133→          discount: discountNum,
+   134→          method,
+   135→          paidAmount: paid,
+   136→          notes: "",
+   137→        }),
+   138→      });
+   139→      if (!res.ok) {
+   140→        const err = await res.json();
+   141→        toastError(err.error || "Error");
+   142→        return;
+   143→      }
+   144→      const data = await res.json();
+   145→      setReceipt({ ...data.invoice, payment: data.payment, tenant: settings, customer: (custData?.items || []).find((c: any) => c.id === customerId) });
+   146→      setCart([]);
+   147→      setCustomerId("");
+   148→      setDiscount("");
+   149→      setPaidAmount("");
+   150→      setMethod("cash");
+   151→      setCheckoutOpen(false);
+   152→      invalidate(["/api/pos", "/api/parts", "/api/dashboard", "/api/invoices", "/api/payments"]);
+   153→      toastSuccess(t("saleCompleted"));
+   154→    } catch {
+   155→      toastError("Error");
+   156→    } finally {
+   157→      setCompleting(false);
+   158→    }
+   159→  };
+   160→
+   161→  const newSale = () => {
+   162→    setReceipt(null);
+   163→    setCart([]);
+   164→    setDiscount("");
+   165→    setPaidAmount("");
+   166→    setCustomerId("");
+   167→  };
+   168→
+   169→  // Receipt view
+   170→  if (receipt) {
+   171→    return <ReceiptView receipt={receipt} money={money} onClose={newSale} />;
+   172→  }
+   173→
+   174→  return (
+   175→    <div className="space-y-4">
+   176→      {/* Header */}
+   177→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   178→        <div>
+   179→          <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
+   180→            <ScanLine className="h-6 w-6" />
+   181→            {t("posTitle")}
+   182→          </h1>
+   183→          <p className="text-sm text-muted-foreground">{t("posSubtitle")}</p>
+   184→        </div>
+   185→        {/* Today summary */}
+   186→        <div className="flex gap-2">
+   187→          <div className="rounded-lg border bg-muted/30 px-3 py-1.5">
+   188→            <p className="text-[10px] text-muted-foreground">{t("todaySales")}</p>
+   189→            <p className="text-sm font-bold tnum">{money(posData?.todayTotal ?? 0)}</p>
+   190→          </div>
+   191→          <div className="rounded-lg border bg-muted/30 px-3 py-1.5">
+   192→            <p className="text-[10px] text-muted-foreground">{t("items")}</p>
+   193→            <p className="text-sm font-bold tnum">{posData?.todayCount ?? 0}</p>
+   194→          </div>
+   195→        </div>
+   196→      </div>
+   197→
+   198→      <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+   199→        {/* Left: Product grid */}
+   200→        <div className="space-y-3">
+   201→          <Card>
+   202→            <CardContent className="p-3">
+   203→              <div className="flex flex-col gap-2 sm:flex-row">
+   204→                <div className="relative flex-1">
+   205→                  <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   206→                  <Input
+   207→                    value={query}
+   208→                    onChange={(e) => setQuery(e.target.value)}
+   209→                    onKeyDown={onScanKey}
+   210→                    placeholder={t("scanOrSearch")}
+   211→                    className="ps-9 h-10"
+   212→                    autoFocus
+   213→                  />
+   214→                </div>
+   215→                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   216→                  <SelectTrigger className="w-full sm:w-48 h-10">
+   217→                    <SelectValue />
+   218→                  </SelectTrigger>
+   219→                  <SelectContent>
+   220→                    <SelectItem value="all">{t("allCategories")}</SelectItem>
+   221→                    {categories.map((c) => (
+   222→                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   223→                    ))}
+   224→                  </SelectContent>
+   225→                </Select>
+   226→              </div>
+   227→            </CardContent>
+   228→          </Card>
+   229→
+   230→          {/* Product grid */}
+   231→          <Card>
+   232→            <CardContent className="p-3">
+   233→              {isLoading ? (
+   234→                <LoadingRows rows={6} />
+   235→              ) : filtered.length === 0 ? (
+   236→                <EmptyState title={t("noResults")} icon={Package} />
+   237→              ) : (
+   238→                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 max-h-[calc(100vh-280px)] overflow-y-auto scroll-thin pe-1">
+   239→                  {filtered.map((p: any) => {
+   240→                    const inCart = cart.find((i) => i.partId === p.id);
+   241→                    const low = p.quantity <= p.minStock;
+   242→                    return (
+   243→                      <button
+   244→                        key={p.id}
+   245→                        onClick={() => addToCart(p)}
+   246→                        className="group relative flex flex-col rounded-lg border bg-card p-3 text-start transition-all hover:border-primary hover:shadow-md"
+   247→                      >
+   248→                        {/* Product icon */}
+   249→                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground">
+   250→                          <Package className="h-6 w-6" />
+   251→                        </div>
+   252→                        {/* Stock badge */}
+   253→                        {low ? (
+   254→                          <span className="absolute end-2 top-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300 tnum">
+   255→                            {p.quantity}
+   256→                          </span>
+   257→                        ) : (
+   258→                          <span className="absolute end-2 top-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 tnum">
+   259→                            {p.quantity}
+   260→                          </span>
+   261→                        )}
+   262→                        {/* In-cart indicator */}
+   263→                        {inCart && (
+   264→                          <span className="absolute start-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+   265→                            <CheckCircle2 className="h-3.5 w-3.5" />
+   266→                          </span>
+   267→                        )}
+   268→                        <p className="line-clamp-2 text-xs font-medium leading-tight">{p.name}</p>
+   269→                        {p.nameAr && <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground" dir="rtl">{p.nameAr}</p>}
+   270→                        <p className="mt-1 text-[10px] text-muted-foreground font-mono">{p.sku}</p>
+   271→                        <p className="mt-1 text-sm font-bold tnum">{money(p.sellingPrice)}</p>
+   272→                      </button>
+   273→                    );
+   274→                  })}
+   275→                </div>
+   276→              )}
+   277→            </CardContent>
+   278→          </Card>
+   279→        </div>
+   280→
+   281→        {/* Right: Cart */}
+   282→        <Card className="flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-110px)]">
+   283→          <CardHeader className="pb-2">
+   284→            <CardTitle className="flex items-center justify-between text-base">
+   285→              <span className="flex items-center gap-2">
+   286→                <ShoppingCart className="h-4 w-4" />
+   287→                {t("cart")}
+   288→              </span>
+   289→              <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground tnum">{cart.length}</span>
+   290→            </CardTitle>
+   291→          </CardHeader>
+   292→          <CardContent className="flex-1 flex flex-col p-3 pt-0 min-h-0">
+   293→            {cart.length === 0 ? (
+   294→              <div className="flex flex-1 items-center justify-center py-8">
+   295→                <EmptyState title={t("cartEmpty")} hint={t("cartEmptyHint")} icon={ShoppingCart} />
+   296→              </div>
+   297→            ) : (
+   298→              <ScrollArea className="flex-1 -mx-1 px-1 max-h-[40vh] lg:max-h-none">
+   299→                <div className="space-y-1.5">
+   300→                  {cart.map((item) => (
+   301→                    <div key={item.partId} className="flex items-center gap-2 rounded-lg border p-2">
+   302→                      <div className="min-w-0 flex-1">
+   303→                        <p className="truncate text-xs font-medium">{item.name}</p>
+   304→                        <p className="truncate text-[10px] text-muted-foreground font-mono">{item.sku} · {money(item.unitPrice)}</p>
+   305→                      </div>
+   306→                      <div className="flex items-center gap-1">
+   307→                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.partId, -1)}>
+   308→                          <Minus className="h-3 w-3" />
+   309→                        </Button>
+   310→                        <input
+   311→                          type="number"
+   312→                          min={1}
+   313→                          max={item.available}
+   314→                          value={item.quantity}
+   315→                          onChange={(e) => setQty(item.partId, Number(e.target.value))}
+   316→                          className="h-7 w-10 rounded border bg-background text-center text-xs tnum"
+   317→                        />
+   318→                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.partId, 1)}>
+   319→                          <Plus className="h-3 w-3" />
+   320→                        </Button>
+   321→                      </div>
+   322→                      <span className="w-16 text-end text-xs font-bold tnum">{money(item.unitPrice * item.quantity)}</span>
+   323→                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeFromCart(item.partId)}>
+   324→                        <Trash2 className="h-3.5 w-3.5" />
+   325→                      </Button>
+   326→                    </div>
+   327→                  ))}
+   328→                </div>
+   329→              </ScrollArea>
+   330→            )}
+   331→
+   332→            {/* Totals */}
+   333→            {cart.length > 0 && (
+   334→              <div className="mt-2 space-y-1.5 border-t pt-3">
+   335→                <div className="flex justify-between text-xs">
+   336→                  <span className="text-muted-foreground">{t("subtotalPos")}</span>
+   337→                  <span className="tnum font-medium">{money(subtotal)}</span>
+   338→                </div>
+   339→                <div className="flex justify-between items-center text-xs">
+   340→                  <span className="text-muted-foreground">{t("discount")}</span>
+   341→                  <Input
+   342→                    type="number"
+   343→                    step="0.001"
+   344→                    value={discount}
+   345→                    onChange={(e) => setDiscount(e.target.value)}
+   346→                    className="h-7 w-24 text-end tnum"
+   347→                    placeholder="0"
+   348→                  />
+   349→                </div>
+   350→                <div className="flex justify-between text-xs">
+   351→                  <span className="text-muted-foreground">{t("tax")} ({taxPercent}%)</span>
+   352→                  <span className="tnum font-medium">{money(tax)}</span>
+   353→                </div>
+   354→                <div className="flex justify-between border-t pt-1.5 text-base font-bold">
+   355→                  <span>{t("grandTotal")}</span>
+   356→                  <span className="tnum text-primary">{money(grand)}</span>
+   357→                </div>
+   358→
+   359→                <Button className="mt-2 w-full h-10" size="lg" onClick={() => setCheckoutOpen(true)}>
+   360→                  <Banknote className="h-4 w-4 me-2" />
+   361→                  {t("checkout")}
+   362→                </Button>
+   363→              </div>
+   364→            )}
+   365→          </CardContent>
+   366→        </Card>
+   367→      </div>
+   368→
+   369→      {/* Checkout dialog */}
+   370→      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+   371→        <DialogContent className="sm:max-w-md">
+   372→          <DialogHeader>
+   373→            <DialogTitle className="flex items-center gap-2">
+   374→              <Banknote className="h-5 w-5" />
+   375→              {t("checkout")}
+   376→            </DialogTitle>
+   377→            <DialogDescription>{cart.length} {t("items")} · {money(grand)}</DialogDescription>
+   378→          </DialogHeader>
+   379→          <div className="space-y-3">
+   380→            <div className="space-y-1.5">
+   381→              <Label className="text-xs">{t("selectCustomerOptional")}</Label>
+   382→              <Select value={customerId} onValueChange={setCustomerId}>
+   383→                <SelectTrigger><SelectValue placeholder={t("walkInCustomer")} /></SelectTrigger>
+   384→                <SelectContent>
+   385→                  {(custData?.items || []).map((c: any) => (
+   386→                    <SelectItem key={c.id} value={c.id}>{c.name} · {c.mobile}</SelectItem>
+   387→                  ))}
+   388→                </SelectContent>
+   389→              </Select>
+   390→            </div>
+   391→
+   392→            <div className="space-y-1.5">
+   393→              <Label className="text-xs">{t("paymentMethodPos")}</Label>
+   394→              <Select value={method} onValueChange={setMethod}>
+   395→                <SelectTrigger><SelectValue /></SelectTrigger>
+   396→                <SelectContent>
+   397→                  <SelectItem value="cash">{t("cash")}</SelectItem>
+   398→                  <SelectItem value="card">{t("card")}</SelectItem>
+   399→                  <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+   400→                  <SelectItem value="other">{t("other")}</SelectItem>
+   401→                </SelectContent>
+   402→              </Select>
+   403→            </div>
+   404→
+   405→            <div className="space-y-1.5">
+   406→              <Label className="text-xs">{t("cashReceived")}</Label>
+   407→              <Input
+   408→                type="number"
+   409→                step="0.001"
+   410→                value={paidAmount}
+   411→                onChange={(e) => setPaidAmount(e.target.value)}
+   412→                placeholder={grand.toFixed(3)}
+   413→                className="tnum"
+   414→              />
+   415→              <div className="flex gap-1">
+   416→                {[grand, Math.ceil(grand / 5) * 5, Math.ceil(grand / 10) * 10, Math.ceil(grand / 50) * 50].map((amt, i) => (
+   417→                  <Button key={i} type="button" size="sm" variant="outline" className="flex-1 h-7 text-xs tnum" onClick={() => setPaidAmount(String(amt))}>
+   418→                    {money(amt)}
+   419→                  </Button>
+   420→                ))}
+   421→              </div>
+   422→            </div>
+   423→
+   424→            <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-sm">
+   425→              <div className="flex justify-between"><span className="text-muted-foreground">{t("grandTotal")}</span><span className="tnum font-bold">{money(grand)}</span></div>
+   426→              <div className="flex justify-between"><span className="text-muted-foreground">{t("cashReceived")}</span><span className="tnum">{money(paid)}</span></div>
+   427→              <div className="flex justify-between border-t pt-1 text-base font-bold">
+   428→                <span className={change > 0 ? "text-emerald-600" : ""}>{change > 0 ? t("change") : t("exactAmount")}</span>
+   429→                <span className={`tnum ${change > 0 ? "text-emerald-600" : ""}`}>{money(change)}</span>
+   430→              </div>
+   431→            </div>
+   432→
+   433→            <div className="flex justify-end gap-2">
+   434→              <Button variant="outline" onClick={() => setCheckoutOpen(false)}>{t("cancel")}</Button>
+   435→              <Button onClick={completeSale} disabled={completing} className="flex-1">
+   436→                <CheckCircle2 className="h-4 w-4 me-1" />
+   437→                {completing ? t("loading") : t("completeSale")}
+   438→              </Button>
+   439→            </div>
+   440→          </div>
+   441→        </DialogContent>
+   442→      </Dialog>
+   443→
+   444→      {/* Recent sales strip */}
+   445→      {posData?.recent?.length > 0 && (
+   446→        <Card>
+   447→          <CardHeader className="pb-2">
+   448→            <CardTitle className="flex items-center gap-2 text-base">
+   449→              <ReceiptIcon className="h-4 w-4" />
+   450→              {t("lastSale")}
+   451→            </CardTitle>
+   452→          </CardHeader>
+   453→          <CardContent>
+   454→            <div className="flex gap-2 overflow-x-auto scroll-thin pb-1">
+   455→              {posData.recent.slice(0, 8).map((sale: any) => (
+   456→                <div key={sale.id} className="min-w-[140px] rounded-lg border p-2">
+   457→                  <p className="font-mono text-xs font-bold tnum">{sale.code}</p>
+   458→                  <p className="text-[10px] text-muted-foreground">{formatDateTime(sale.createdAt, lang)}</p>
+   459→                  <p className="mt-1 text-sm font-bold tnum">{money(sale.grandTotal)}</p>
+   460→                  <p className="text-[10px] text-muted-foreground">{sale.items?.length ?? 0} {t("items")}</p>
+   461→                </div>
+   462→              ))}
+   463→            </div>
+   464→          </CardContent>
+   465→        </Card>
+   466→      )}
+   467→    </div>
+   468→  );
+   469→}
+   470→
+   471→// ─── Receipt view ────────────────────────────────────────────
+   472→function ReceiptView({ receipt, money, onClose }: { receipt: any; money: (n: number) => string; onClose: () => void }) {
+   473→  const { t, lang } = useT();
+   474→  const tn = receipt.tenant || {};
+   475→  const payment = receipt.payment || {};
+   476→  const change = Math.max(0, (payment.amount ?? 0) - receipt.grandTotal);
+   477→
+   478→  return (
+   479→    <div className="mx-auto max-w-md space-y-4">
+   480→      <div className="flex items-center justify-between no-print">
+   481→        <div className="flex items-center gap-2">
+   482→          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
+   483→            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+   484→          </div>
+   485→          <div>
+   486→            <p className="text-sm font-bold">{t("saleCompleted")}</p>
+   487→            <p className="text-xs text-muted-foreground">{receipt.code}</p>
+   488→          </div>
+   489→        </div>
+   490→        <Button variant="outline" size="sm" onClick={onClose}>
+   491→          <X className="h-4 w-4 me-1" />
+   492→          {t("newSale")}
+   493→        </Button>
+   494→      </div>
+   495→
+   496→      {/* Printable receipt */}
+   497→      <Card className="print-area">
+   498→        <CardContent className="p-5">
+   499→          {/* Workshop header */}
+   500→          <div className="text-center border-b pb-3">
+   501→            <h2 className="text-lg font-bold">{tn.name || t("appName")}</h2>
+   502→            <p className="text-[11px] text-muted-foreground">{tn.address}</p>
+   503→            <p className="text-[11px] text-muted-foreground">{tn.phone} · {tn.email}</p>
+   504→            {tn.taxNumber && <p className="text-[11px] text-muted-foreground">{t("taxNumber")}: {tn.taxNumber}</p>}
+   505→          </div>
+   506→
+   507→          {/* Sale info */}
+   508→          <div className="flex justify-between py-2 text-xs">
+   509→            <div>
+   510→              <p className="font-mono font-bold">{receipt.code}</p>
+   511→              <p className="text-muted-foreground">{formatDateTime(receipt.createdAt, lang)}</p>
+   512→            </div>
+   513→            <div className="text-end">
+   514→              <p className="font-semibold uppercase">{t("posInvoiceType")}</p>
+   515→              <p className="text-muted-foreground">{receipt.customer?.name || t("walkInCustomer")}</p>
+   516→            </div>
+   517→          </div>
+   518→
+   519→          {/* Items */}
+   520→          <table className="w-full text-xs border-t pt-2 mt-2">
+   521→            <thead>
+   522→              <tr className="border-b text-muted-foreground">
+   523→                <th className="py-1 text-start font-medium">{t("item")}</th>
+   524→                <th className="py-1 text-center font-medium">{t("quantity")}</th>
+   525→                <th className="py-1 text-end font-medium">{t("total")}</th>
+   526→              </tr>
+   527→            </thead>
+   528→            <tbody>
+   529→              {receipt.items?.map((it: any) => (
+   530→                <tr key={it.id} className="border-b border-dashed">
+   531→                  <td className="py-1.5">
+   532→                    <p className="font-medium">{it.name}</p>
+   533→                    <p className="text-[10px] text-muted-foreground tnum">{money(it.unitPrice)} × {it.quantity}</p>
+   534→                  </td>
+   535→                  <td className="py-1.5 text-center tnum">{it.quantity}</td>
+   536→                  <td className="py-1.5 text-end tnum font-medium">{money(it.total)}</td>
+   537→                </tr>
+   538→              ))}
+   539→            </tbody>
+   540→          </table>
+   541→
+   542→          {/* Totals */}
+   543→          <div className="mt-2 space-y-0.5 text-xs">
+   544→            <div className="flex justify-between"><span className="text-muted-foreground">{t("subtotalPos")}</span><span className="tnum">{money(receipt.partsTotal)}</span></div>
+   545→            {receipt.discount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("discount")}</span><span className="tnum">- {money(receipt.discount)}</span></div>}
+   546→            <div className="flex justify-between"><span className="text-muted-foreground">{t("tax")}</span><span className="tnum">{money(receipt.tax)}</span></div>
+   547→            <div className="flex justify-between border-t pt-1 text-sm font-bold">
+   548→              <span>{t("grandTotal")}</span>
+   549→              <span className="tnum">{money(receipt.grandTotal)}</span>
+   550→            </div>
+   551→            <div className="flex justify-between"><span className="text-muted-foreground">{t("cashReceived")} ({t(payment.method) || payment.method})</span><span className="tnum">{money(payment.amount)}</span></div>
+   552→            {change > 0 && <div className="flex justify-between text-emerald-600 font-bold"><span>{t("change")}</span><span className="tnum">{money(change)}</span></div>}
+   553→          </div>
+   554→
+   555→          {/* Footer */}
+   556→          <div className="mt-4 border-t pt-3 text-center">
+   557→            <p className="text-xs font-medium">{t("thankYou")}</p>
+   558→            {tn.invoiceFooter && <p className="mt-1 text-[10px] text-muted-foreground">{tn.invoiceFooter}</p>}
+   559→            <p className="mt-2 text-[10px] text-muted-foreground">{t("soldBy")}: Khalid Al-Rashidi</p>
+   560→          </div>
+   561→        </CardContent>
+   562→      </Card>
+   563→
+   564→      <div className="flex gap-2 no-print">
+   565→        <Button variant="outline" className="flex-1" onClick={() => window.print()}>
+   566→          <Printer className="h-4 w-4 me-2" />
+   567→          {t("printReceipt")}
+   568→        </Button>
+   569→        <Button className="flex-1" onClick={onClose}>
+   570→          <Plus className="h-4 w-4 me-2" />
+   571→          {t("newSale")}
+   572→        </Button>
+   573→      </div>
+   574→    </div>
+   575→  );
+   576→}
+   577→

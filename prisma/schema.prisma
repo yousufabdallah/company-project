@@ -24,7 +24,8 @@ model Tenant {
   crNumber        String? // commercial registration
   taxNumber       String?
   currency        String   @default("OMR")
-  taxPercent      Float    @default(0)
+  taxEnabled      Boolean  @default(true)
+  taxPercent      Float    @default(5)
   invoicePrefix   String   @default("INV-")
   jobCardPrefix   String   @default("JC-")
   estimatePrefix  String   @default("EST-")
@@ -486,6 +487,8 @@ model Purchase {
   date        DateTime @default(now())
   status      String   @default("draft") // draft | received | invoiced | paid
   total       Float    @default(0)
+  tax         Float    @default(0)
+  grandTotal  Float    @default(0)
   paid        Float    @default(0)
   createdAt   DateTime @default(now())
 

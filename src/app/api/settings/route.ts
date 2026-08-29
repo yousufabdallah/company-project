@@ -11,9 +11,15 @@ export async function GET() {
 export async function PUT(req: Request) {
   const tenantId = await getTenantId();
   const body = await req.json();
-  const allowed = ["name", "address", "phone", "whatsapp", "email", "crNumber", "taxNumber", "currency", "taxPercent", "invoicePrefix", "jobCardPrefix", "estimatePrefix", "workingHours", "invoiceFooter", "terms", "logo", "stamp"];
+  const allowed = ["name", "address", "phone", "whatsapp", "email", "crNumber", "taxNumber", "currency", "taxEnabled", "taxPercent", "invoicePrefix", "jobCardPrefix", "estimatePrefix", "workingHours", "invoiceFooter", "terms", "logo", "stamp"];
   const data: any = {};
-  for (const k of allowed) if (k in body) data[k] = k === "taxPercent" ? Number(body[k]) : body[k];
+  for (const k of allowed) {
+    if (k in body) {
+      if (k === "taxPercent") data[k] = Number(body[k]);
+      else if (k === "taxEnabled") data[k] = Boolean(body[k]);
+      else data[k] = body[k];
+    }
+  }
   const tenant = await db.tenant.update({ where: { id: tenantId }, data });
   await db.auditLog.create({ data: { tenantId, action: "updated", module: "settings", record: "tenant" } });
   return NextResponse.json(tenant);

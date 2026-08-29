@@ -152,6 +152,9 @@ export function JobCardsView() {
 function JobCardDetail({ jc, money, onClose, onOpenInvoice }: { jc: any; money: (n: number) => string; onClose: () => void; onOpenInvoice?: (id: string) => void }) {
   const { t, lang } = useT();
   const { invalidate, toastSuccess, toastError } = useApiMutation();
+  // Fetch tenant settings to show the tax percentage on the tax row.
+  const { data: settings } = useApi<any>("/api/settings");
+  const taxPercent = settings?.taxPercent ?? 0;
   const [notes, setNotes] = useState(jc.diagnosis || "");
 
   const nextStatus = (s: string) => {
@@ -236,7 +239,7 @@ function JobCardDetail({ jc, money, onClose, onOpenInvoice }: { jc: any; money: 
         <Row label={t("laborTotal")} value={money(jc.laborTotal)} />
         <Row label={t("partsTotal")} value={money(jc.partsTotal)} />
         {jc.discount > 0 && <Row label={t("discount")} value={"- " + money(jc.discount)} />}
-        <Row label={t("tax")} value={money(jc.tax)} />
+        <Row label={`${t("tax")} (${taxPercent}%)`} value={money(jc.tax)} />
         <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(jc.grandTotal)}</span></div>
       </div>
 
@@ -436,7 +439,7 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
             <Row label={t("laborTotal")} value={formatMoney(calc.laborTotal, "OMR", lang)} />
             <Row label={t("partsTotal")} value={formatMoney(calc.partsTotal, "OMR", lang)} />
-            <Row label={t("tax")} value={formatMoney(calc.tax, "OMR", lang)} />
+            <Row label={`${t("tax")} (${taxPercent}%)`} value={formatMoney(calc.tax, "OMR", lang)} />
             <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{formatMoney(calc.grand, "OMR", lang)}</span></div>
           </div>
 

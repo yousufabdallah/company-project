@@ -12,11 +12,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useState } from "react";
 import { ShoppingCart, Plus, Trash2, Package } from "lucide-react";
 
+// Local row helper (mirrors the shared Row component used by other views)
+function Row({ label, value }: { label: string; value: string }) {
+  return <div className="flex justify-between text-muted-foreground"><span>{label}</span><span className="tnum">{value}</span></div>;
+}
+
 export function PurchasesView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/purchases");
   const [creating, setCreating] = useState(false);
   const money = (n: number) => formatMoney(n, "OMR", lang);
+
+  const purchases = data?.items || [];
+  // Totals across all loaded purchases — used in the table footer.
+  const sumTotal = purchases.reduce((s: number, p: any) => s + Number(p.total || 0), 0);
+  const sumTax = purchases.reduce((s: number, p: any) => s + Number(p.tax || 0), 0);
+  const sumGrand = purchases.reduce((s: number, p: any) => s + Number(p.grandTotal || 0), 0);
 
   return (
     <div>
@@ -36,20 +47,32 @@ export function PurchasesView() {
                     <TableHead className="hidden md:table-cell">{t("warehouse")}</TableHead>
                     <TableHead className="hidden sm:table-cell">{t("date")}</TableHead>
                     <TableHead>{t("status")}</TableHead>
-                    <TableHead className="text-end">{t("total")}</TableHead>
+                    <TableHead className="hidden sm:table-cell text-end">{t("total")}</TableHead>
+                    <TableHead className="hidden sm:table-cell text-end">{t("tax")}</TableHead>
+                    <TableHead className="text-end">{t("grandTotal")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(data?.items || []).map((p: any) => (
+                  {purchases.map((p: any) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-xs font-bold tnum">{p.code}</TableCell>
                       <TableCell className="text-sm font-medium">{p.supplier?.name}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{p.warehouse?.name || "—"}</TableCell>
                       <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">{formatDate(p.date, lang)}</TableCell>
                       <TableCell><StatusBadge status={p.status === "paid" ? "paid" : p.status === "received" ? "approved" : "pending"} label={t("status_" + p.status) || p.status} /></TableCell>
-                      <TableCell className="text-end font-semibold tnum">{money(p.total)}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-end tnum">{money(p.total)}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-end tnum text-muted-foreground">{money(p.tax)}</TableCell>
+                      <TableCell className="text-end font-semibold tnum">{money(p.grandTotal)}</TableCell>
                     </TableRow>
                   ))}
+                  {purchases.length > 0 && (
+                    <TableRow className="border-t-2 bg-muted/40 font-semibold">
+                      <TableCell colSpan={5} className="text-xs uppercase text-muted-foreground">{t("grandTotal")}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-end tnum text-xs">{money(sumTotal)}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-end tnum text-xs">{money(sumTax)}</TableCell>
+                      <TableCell className="text-end tnum text-sm">{money(sumGrand)}</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -67,6 +90,8 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const { data: sup } = useApi<any>("/api/suppliers");
   const { data: wh } = useApi<any>("/api/dashboard");
   const { data: parts } = useApi<any>("/api/parts");
+  const { data: settings } = useApi<any>("/api/settings");
+  const taxPercent = settings?.taxPercent ?? 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<any[]>([]);
@@ -78,6 +103,9 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     if (p) setItems([...items, { partId: p.id, name: p.name, quantity: 1, unitCost: p.costPrice }]);
   };
   const total = items.reduce((s, i) => s + i.quantity * i.unitCost, 0);
+  // Match backend tax logic (no discount on purchases).
+  const tax = taxPercent > 0 ? Math.round((total * taxPercent) / 100 * 1000) / 1000 : 0;
+  const grand = Math.round((total + tax) * 1000) / 1000;
 
   const submit = async () => {
     if (!supplierId || items.length === 0) return toastError(t("required"));
@@ -135,9 +163,10 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             </Table>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-            <span className="text-sm font-medium">{t("grandTotal")}</span>
-            <span className="text-lg font-bold tnum">{money(total)}</span>
+          <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
+            <Row label={t("total")} value={money(total)} />
+            <Row label={`${t("tax")} (${taxPercent}%)`} value={money(tax)} />
+            <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(grand)}</span></div>
           </div>
 
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button><Button onClick={submit} disabled={saving}><Package className="h-4 w-4 me-1" />{t("create")}</Button></div>

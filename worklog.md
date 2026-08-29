@@ -39,3 +39,29 @@ Work Log:
 Stage Summary:
 - Super admin now has: platform settings, plans management (3 default plans seeded lazily), per-tenant subscription control (plan/status/expiry with quick renew), and one-click workshop impersonation with a clear banner + exit.
 - Multi-tenancy data isolation now actually enforced via session tenantId on every workshop API.
+
+---
+Task ID: 3-5
+Agent: general-purpose (Z.ai Code)
+Task: Fix tax preview bugs + UI consistency (tax % display everywhere + add tax to Purchases)
+
+Work Log:
+- Part 1 investigation: The tax preview "bug" in job-cards.tsx (line 333) and estimates.tsx (line 215) create dialogs is NOT a bug. Both create dialogs have NO discount input field, so all line items are sent with discount=0. The backend computes `calculateTax(subtotal, discount=0, …)` = `(subtotal − 0) * percent / 100`, and the frontend computes `subtotal * percent / 100` — mathematically identical. Verified by reading the POST handlers in /api/job-cards/route.ts (line 33: `discount = Number(body.discount) || 0`) and /api/estimates/route.ts (line 30). No code change was needed; documented the finding here instead.
+- Part 2 — Tax % now displayed consistently next to the tax amount in every totals block:
+  • job-cards.tsx JobCardDetail (line 242): added `useApi("/api/settings")` inside JobCardDetail to fetch tenant taxPercent (the [id] route doesn't include tenant data), then changed the Row label to `` `${t("tax")} (${taxPercent}%)` ``.
+  • job-cards.tsx JobCardCreateDialog (line 442): taxPercent was already in scope (line 301), so updated the create-dialog totals Row label the same way.
+  • estimates.tsx EstimateDetail (line 169): added `useApi("/api/settings")` inside EstimateDetail to fetch tenant taxPercent, then updated the Row label.
+  • estimates.tsx EstimateCreateDialog (line 312): taxPercent already in scope (line 196), updated Row label.
+  • pos.tsx ReceiptView (line 546): changed the tax row label to `` `${t("tax")} (${tn.taxPercent ?? 0}%)` `` — `tn` (= receipt.tenant) already carries the tenant object from the POST /api/pos response (frontend sets `tenant: settings` on the receipt). No new fetch needed.
+  The main POS cart totals (line 351) already showed the percentage, so the receipt now matches.
+- Part 3 — Added tax accounting to Purchases:
+  • prisma/schema.prisma Purchase model: added `tax Float @default(0)` and `grandTotal Float @default(0)` immediately after `total` (line 490–491). Pushed schema non-destructively with `prisma db push --accept-data-loss`; regenerated Prisma client.
+  • src/app/api/purchases/route.ts POST: imported `{ getTaxConfig, calculateTax, calculateGrandTotal }` from `@/lib/tax`; computed `taxConfig`, `tax`, `grandTotal` after summing items (no discount — purchases have none); added `tax` and `grandTotal` to the Purchase.create data; switched the `paid` calculation from `total` to `grandTotal` so a "paid" purchase settles the full tax-inclusive amount with the supplier.
+  • prisma/seed.ts: updated the seeded purchase PO-0001 to include tax + grandTotal + paid=grandTotal so demo data matches the new schema.
+  • src/components/views/purchases.tsx: added a local `Row` helper; expanded the table with new `tax` and `grandTotal` columns (both hidden on mobile via `hidden sm:table-cell`, like the existing total column); added a totals footer row that sums Total/Tax/Grand-Total across all loaded purchases; updated the create dialog to fetch `/api/settings` and show a 3-line Total / Tax (x%) / Grand Total summary instead of the previous single-line Grand Total block, mirroring the layout used in the Job Card and Estimate create dialogs.
+- Lint: `bun run lint` exits 0 (clean).
+
+Stage Summary:
+- Tax formula in create dialogs confirmed correct (no discount in those forms ⇒ frontend == backend).
+- Tax % now appears next to every Tax row in: Job Card detail + create dialog, Estimate detail + create dialog, POS main cart + printable receipt — fully consistent across the app.
+- Purchases now have full tax accounting: schema fields, POST computes tax+grandTotal via shared `calculateTax`/`calculateGrandTotal`, `paid` tracks the grand total, the list view shows tax/grandTotal columns with a totals footer, and the create dialog previews all three amounts live. Re-seeded the demo tenant so PO-0001 reflects the new fields.

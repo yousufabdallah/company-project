@@ -104,6 +104,9 @@ export function EstimatesView() {
 function EstimateDetail({ est, money, onClose }: { est: any; money: (n: number) => string; onClose: () => void }) {
   const { t, lang } = useT();
   const { invalidate, toastSuccess, toastError } = useApiMutation();
+  // Fetch tenant settings to show the tax percentage on the tax row.
+  const { data: settings } = useApi<any>("/api/settings");
+  const taxPercent = settings?.taxPercent ?? 0;
 
   const setStatus = async (status: string) => {
     try {
@@ -163,7 +166,7 @@ function EstimateDetail({ est, money, onClose }: { est: any; money: (n: number) 
         <Row label={t("laborTotal")} value={money(est.laborTotal)} />
         <Row label={t("partsTotal")} value={money(est.partsTotal)} />
         {est.discount > 0 && <Row label={t("discount")} value={"- " + money(est.discount)} />}
-        <Row label={t("tax")} value={money(est.tax)} />
+        <Row label={`${t("tax")} (${taxPercent}%)`} value={money(est.tax)} />
         <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(est.grandTotal)}</span></div>
       </div>
 
@@ -306,7 +309,7 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <div className="space-y-1 text-sm">
               <Row label={t("laborTotal")} value={formatMoney(laborTotal, "OMR", lang)} />
               <Row label={t("partsTotal")} value={formatMoney(partsTotal, "OMR", lang)} />
-              <Row label={t("tax")} value={formatMoney(tax, "OMR", lang)} />
+              <Row label={`${t("tax")} (${taxPercent}%)`} value={formatMoney(tax, "OMR", lang)} />
               <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{formatMoney(grand, "OMR", lang)}</span></div>
             </div>
           </div>

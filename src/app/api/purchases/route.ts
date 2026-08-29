@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getTenantId, nextCode } from "@/lib/api";
+import { getTaxConfig, calculateTax, calculateGrandTotal } from "@/lib/tax";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -19,6 +20,11 @@ export async function POST(req: Request) {
   const code = await nextCode("PO-", "purchase", tenantId);
   const items = (body.items || []) as Array<{ partId: string; quantity: number; unitCost: number }>;
   const total = items.reduce((s, i) => s + i.quantity * i.unitCost, 0);
+  // Purchases have no discount — apply tenant tax on the net total.
+  const taxConfig = await getTaxConfig(tenantId);
+  const tax = calculateTax(total, 0, taxConfig);
+  const grandTotal = calculateGrandTotal(total, 0, tax);
+  const status = body.status || "received";
 
   const purchase = await db.$transaction(async (tx) => {
     const p = await tx.purchase.create({
@@ -28,9 +34,12 @@ export async function POST(req: Request) {
         supplierId: body.supplierId,
         warehouseId: body.warehouseId || null,
         date: body.date ? new Date(body.date) : new Date(),
-        status: body.status || "received",
+        status,
         total,
-        paid: body.status === "paid" ? total : 0,
+        tax,
+        grandTotal,
+        // When marked as paid, the supplier is paid the full grand total (incl. tax).
+        paid: status === "paid" ? grandTotal : 0,
         items: { create: items.map((i) => ({ partId: i.partId, quantity: i.quantity, unitCost: i.unitCost, total: i.quantity * i.unitCost })) },
       },
       include: { items: true },

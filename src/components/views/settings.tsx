@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEffect, useState, useRef } from "react";
-import { Settings2, Save, Globe, Image as ImageIcon, Upload, X, Stamp } from "lucide-react";
+import { Settings2, Save, Globe, Image as ImageIcon, Upload, X, Stamp, Percent, Receipt } from "lucide-react";
 import { useApp } from "@/lib/store";
 
 export function SettingsView() {
@@ -92,6 +93,79 @@ export function SettingsView() {
 
         {/* Localization & finance */}
         <div className="space-y-4">
+          {/* ─── Prominent Tax Settings Card ─── */}
+          <Card className={`border-2 ${form.taxEnabled ? "border-emerald-300 dark:border-emerald-800" : "border-muted"}`}>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center gap-2">
+                  <Percent className="h-4 w-4" />
+                  {t("taxSettings")}
+                </span>
+                {form.taxEnabled ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    {t("taxEnabledBadge")}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                    OFF
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Enable/Disable toggle */}
+              <div className="flex items-start justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                <div className="min-w-0">
+                  <Label className="text-sm font-semibold">{t("taxEnabled")}</Label>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{t("taxEnabledDesc")}</p>
+                </div>
+                <Switch
+                  checked={form.taxEnabled ?? true}
+                  onCheckedChange={(v) => update("taxEnabled", v)}
+                />
+              </div>
+
+              {/* Tax rate + Tax number */}
+              {form.taxEnabled && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={`${t("taxRate")} *`}>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={form.taxPercent ?? 0}
+                        onChange={(e) => update("taxPercent", Number(e.target.value))}
+                        className="pe-8"
+                      />
+                      <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">{t("taxRateHint")}</p>
+                  </Field>
+                  <Field label={t("taxNumberLabel")}>
+                    <Input
+                      value={form.taxNumber || ""}
+                      onChange={(e) => update("taxNumber", e.target.value)}
+                      placeholder="VAT-OM-XXXXXXXX"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">{t("taxNumberHint")}</p>
+                  </Field>
+                </div>
+              )}
+
+              {/* Warning when disabled */}
+              {!form.taxEnabled && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                  <Receipt className="h-4 w-4 shrink-0" />
+                  <span>{t("taxDisabled")}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4" />{t("language")}</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -112,7 +186,6 @@ export function SettingsView() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label={t("taxPercent")}><Input type="number" step="0.01" value={form.taxPercent ?? 0} onChange={(e) => update("taxPercent", Number(e.target.value))} /></Field>
             </CardContent>
           </Card>
 

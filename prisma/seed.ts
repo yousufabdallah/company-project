@@ -263,7 +263,10 @@ async function main() {
   await db.estimateItem.create({ data: { estimateId: est.id, type: "service", name: serviceRecs[3].name, description: "Major engine repair incl. head gasket", quantity: 1, unitPrice: serviceRecs[3].price, total: serviceRecs[3].price } });
 
   // ─── Purchases ──────────────────────────────────────────
-  const purch = await db.purchase.create({ data: { tenantId: tenant.id, code: "PO-0001", supplierId: sup1.id, warehouseId: whParts.id, date: mkDate(-3, 10, 0), status: "received", total: OMR(partRecs[0].costPrice * 20 + partRecs[1].costPrice * 30), paid: OMR(partRecs[0].costPrice * 20 + partRecs[1].costPrice * 30) } });
+  const purchTotal = OMR(partRecs[0].costPrice * 20 + partRecs[1].costPrice * 30);
+  const purchTax = OMR((purchTotal * tenant.taxPercent) / 100);
+  const purchGrand = OMR(purchTotal + purchTax);
+  const purch = await db.purchase.create({ data: { tenantId: tenant.id, code: "PO-0001", supplierId: sup1.id, warehouseId: whParts.id, date: mkDate(-3, 10, 0), status: "received", total: purchTotal, tax: purchTax, grandTotal: purchGrand, paid: purchGrand } });
   await db.purchaseItem.create({ data: { purchaseId: purch.id, partId: partRecs[0].id, quantity: 20, unitCost: partRecs[0].costPrice, total: OMR(partRecs[0].costPrice * 20) } });
   await db.purchaseItem.create({ data: { purchaseId: purch.id, partId: partRecs[1].id, quantity: 30, unitCost: partRecs[1].costPrice, total: OMR(partRecs[1].costPrice * 30) } });
 

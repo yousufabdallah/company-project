@@ -543,7 +543,7 @@ function ReceiptView({ receipt, money, onClose }: { receipt: any; money: (n: num
           <div className="mt-2 space-y-0.5 text-xs">
             <div className="flex justify-between"><span className="text-muted-foreground">{t("subtotalPos")}</span><span className="tnum">{money(receipt.partsTotal)}</span></div>
             {receipt.discount > 0 && <div className="flex justify-between"><span className="text-muted-foreground">{t("discount")}</span><span className="tnum">- {money(receipt.discount)}</span></div>}
-            <div className="flex justify-between"><span className="text-muted-foreground">{t("tax")}</span><span className="tnum">{money(receipt.tax)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("tax")} ({tn.taxPercent ?? 0}%)</span><span className="tnum">{money(receipt.tax)}</span></div>
             <div className="flex justify-between border-t pt-1 text-sm font-bold">
               <span>{t("grandTotal")}</span>
               <span className="tnum">{money(receipt.grandTotal)}</span>

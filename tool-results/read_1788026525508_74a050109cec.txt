@@ -1,0 +1,758 @@
+     1→"use client";
+     2→
+     3→import { useT, formatMoney, formatDate, formatNumber } from "@/lib/format";
+     4→import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation } from "@/components/shared";
+     5→import { Card, CardContent } from "@/components/ui/card";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Input } from "@/components/ui/input";
+     8→import { Label } from "@/components/ui/label";
+     9→import { Textarea } from "@/components/ui/textarea";
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    11→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+    12→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    13→import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    14→import { useApp } from "@/lib/store";
+    15→import { useMemo, useState } from "react";
+    16→import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check, Receipt, FileText } from "lucide-react";
+    17→
+    18→const STATUSES = ["draft", "waiting_approval", "approved", "in_progress", "waiting_parts", "waiting_customer", "quality_check", "completed", "ready_for_delivery", "delivered", "cancelled"];
+    19→
+    20→export function JobCardsView() {
+    21→  const { t, lang } = useT();
+    22→  const { data, isLoading } = useApi<any>("/api/job-cards");
+    23→  const user = useApp((s) => s.user);
+    24→  const setView = useApp((s) => s.setView);
+    25→  const setFocusId = useApp((s) => s.setFocusId);
+    26→  const isTechnician = user?.role === "technician";
+    27→  const [scope, setScope] = useState<"mine" | "all">(isTechnician ? "mine" : "all");
+    28→  const [q, setQ] = useState("");
+    29→  const [statusFilter, setStatusFilter] = useState("all");
+    30→  const [creating, setCreating] = useState(false);
+    31→  const [selected, setSelected] = useState<string | null>(null);
+    32→
+    33→  const money = (n: number) => formatMoney(n, "OMR", lang);
+    34→  const items = (data?.items || []).filter((j: any) => {
+    35→    // Technicians default to seeing only their assigned jobs, but can switch to "All".
+    36→    // Match by technician id OR by technician email (covers demo users).
+    37→    if (scope === "mine") {
+    38→      const assignedToMe = j.technicianId === user?.id || (user?.email && j.technician?.email === user.email);
+    39→      if (!assignedToMe) return false;
+    40→    }
+    41→    if (statusFilter !== "all" && j.status !== statusFilter) return false;
+    42→    if (q && !j.code.toLowerCase().includes(q.toLowerCase()) && !j.customer?.name.toLowerCase().includes(q.toLowerCase()) && !j.vehicle?.plateNumber.toLowerCase().includes(q.toLowerCase())) return false;
+    43→    return true;
+    44→  });
+    45→
+    46→  const { data: detail } = useApi<any>(selected ? `/api/job-cards/${selected}` : null);
+    47→
+    48→  return (
+    49→    <div>
+    50→      <PageHeader title={t("jobCards")} subtitle={`${items.length} ${t("jobCards").toLowerCase()}`}>
+    51→        {/* Technicians don't create job cards (advisors/owners do), so hide the button for them */}
+    52→        {!isTechnician && (
+    53→          <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+    54→        )}
+    55→      </PageHeader>
+    56→
+    57→      <Card>
+    58→        <CardContent className="p-3 sm:p-4">
+    59→          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+    60→            {/* Scope toggle: My Jobs vs All Jobs (technicians only — others always see All) */}
+    61→            {isTechnician && (
+    62→              <Tabs value={scope} onValueChange={(v) => setScope(v as "mine" | "all")}>
+    63→                <TabsList className="h-9">
+    64→                  <TabsTrigger value="mine" className="text-xs px-3">{t("myJobs")}</TabsTrigger>
+    65→                  <TabsTrigger value="all" className="text-xs px-3">{t("allJobs")}</TabsTrigger>
+    66→                </TabsList>
+    67→              </Tabs>
+    68→            )}
+    69→            <div className="relative flex-1 max-w-sm">
+    70→              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    71→              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} className="ps-9" />
+    72→            </div>
+    73→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+    74→              <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+    75→              <SelectContent>
+    76→                <SelectItem value="all">{t("all")}</SelectItem>
+    77→                {STATUSES.map((s) => <SelectItem key={s} value={s}>{t("status_" + s)}</SelectItem>)}
+    78→              </SelectContent>
+    79→            </Select>
+    80→          </div>
+    81→
+    82→          {isLoading ? (
+    83→            <LoadingRows />
+    84→          ) : items.length === 0 ? (
+    85→            <EmptyState title={scope === "mine" ? t("noAssignedJobs") : t("noResults")} icon={Wrench} />
+    86→          ) : (
+    87→            <div className="overflow-x-auto">
+    88→              <Table>
+    89→                <TableHeader>
+    90→                  <TableRow>
+    91→                    <TableHead>{t("jobCardNumber")}</TableHead>
+    92→                    <TableHead>{t("customer")} / {t("vehicle")}</TableHead>
+    93→                    <TableHead className="hidden md:table-cell">{t("complaint")}</TableHead>
+    94→                    <TableHead className="hidden lg:table-cell">{t("technician")}</TableHead>
+    95→                    <TableHead>{t("status")}</TableHead>
+    96→                    <TableHead className="hidden sm:table-cell text-center">{t("invoice")}</TableHead>
+    97→                    <TableHead className="text-end">{t("grandTotal")}</TableHead>
+    98→                  </TableRow>
+    99→                </TableHeader>
+   100→                <TableBody>
+   101→                  {items.map((j: any) => (
+   102→                    <TableRow key={j.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelected(j.id)}>
+   103→                      <TableCell className="font-mono text-xs font-bold tnum">{j.code}</TableCell>
+   104→                      <TableCell>
+   105→                        <p className="text-sm font-medium">{j.customer?.name}</p>
+   106→                        <p className="text-xs text-muted-foreground">{j.vehicle?.plateNumber} · {j.vehicle?.make} {j.vehicle?.model}</p>
+   107→                      </TableCell>
+   108→                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-xs truncate">{j.complaint}</TableCell>
+   109→                      <TableCell className="hidden lg:table-cell text-xs">{j.technician?.name || "—"}</TableCell>
+   110→                      <TableCell><StatusBadge status={j.status} /></TableCell>
+   111→                      {/* Auto-invoice indicator */}
+   112→                      <TableCell className="hidden sm:table-cell text-center">
+   113→                        {j.invoice ? (
+   114→                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" title={t("autoInvoiceCreated")}>
+   115→                            <Receipt className="h-3 w-3" />
+   116→                            <span className="font-mono tnum">{j.invoice.code}</span>
+   117→                          </span>
+   118→                        ) : (
+   119→                          <span className="text-[10px] text-muted-foreground">—</span>
+   120→                        )}
+   121→                      </TableCell>
+   122→                      <TableCell className="text-end font-semibold tnum">{money(j.grandTotal)}</TableCell>
+   123→                    </TableRow>
+   124→                  ))}
+   125→                </TableBody>
+   126→              </Table>
+   127→            </div>
+   128→          )}
+   129→        </CardContent>
+   130→      </Card>
+   131→
+   132→      {/* Create dialog */}
+   133→      <JobCardCreateDialog open={creating} onOpenChange={setCreating} />
+   134→
+   135→      {/* Detail dialog */}
+   136→      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+   137→        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto scroll-thin">
+   138→          <DialogHeader>
+   139→            <DialogTitle className="flex items-center gap-2">
+   140→              <Wrench className="h-5 w-5" />{detail?.code}
+   141→              {detail && <StatusBadge status={detail.status} />}
+   142→            </DialogTitle>
+   143→            <DialogDescription className="sr-only">{t("jobCards")}</DialogDescription>
+   144→          </DialogHeader>
+   145→          {detail && <JobCardDetail jc={detail} money={money} onClose={() => setSelected(null)} onOpenInvoice={(id) => { setFocusId(id); setView("invoices"); }} />}
+   146→        </DialogContent>
+   147→      </Dialog>
+   148→    </div>
+   149→  );
+   150→}
+   151→
+   152→function JobCardDetail({ jc, money, onClose, onOpenInvoice }: { jc: any; money: (n: number) => string; onClose: () => void; onOpenInvoice?: (id: string) => void }) {
+   153→  const { t, lang } = useT();
+   154→  const { invalidate, toastSuccess, toastError } = useApiMutation();
+   155→  const [notes, setNotes] = useState(jc.diagnosis || "");
+   156→
+   157→  const nextStatus = (s: string) => {
+   158→    const idx = STATUSES.indexOf(s);
+   159→    return STATUSES[idx + 1] && STATUSES[idx + 1] !== "cancelled" ? STATUSES[idx + 1] : null;
+   160→  };
+   161→  const next = nextStatus(jc.status);
+   162→
+   163→  const advance = async (status: string) => {
+   164→    try {
+   165→      await fetch(`/api/job-cards/${jc.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, diagnosis: notes }) });
+   166→      invalidate(["/api/job-cards", "/api/dashboard", "/api/parts"]);
+   167→      toastSuccess();
+   168→      onClose();
+   169→    } catch {
+   170→      toastError("Error");
+   171→    }
+   172→  };
+   173→
+   174→  return (
+   175→    <div className="space-y-4">
+   176→      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-xs">
+   177→        <Info label={t("customer")} value={jc.customer?.name} />
+   178→        <Info label={t("vehicle")} value={`${jc.vehicle?.plateNumber} · ${jc.vehicle?.make} ${jc.vehicle?.model}`} />
+   179→        <Info label={t("mileage")} value={`${formatNumber(jc.mileage, lang)} km`} />
+   180→        <Info label={t("priority")} value={t("status_" + jc.priority)} />
+   181→        <Info label={t("technician")} value={jc.technician?.name || "—"} />
+   182→        <Info label={t("estimatedCompletion")} value={jc.estimatedCompletion ? formatDate(jc.estimatedCompletion, lang) : "—"} />
+   183→        <Info label={t("date")} value={formatDate(jc.createdAt, lang)} />
+   184→        <Info label={t("grandTotal")} value={money(jc.grandTotal)} />
+   185→      </div>
+   186→
+   187→      <div className="rounded-lg border p-3">
+   188→        <p className="text-xs font-medium text-muted-foreground mb-1">{t("complaint")}</p>
+   189→        <p className="text-sm">{jc.complaint}</p>
+   190→      </div>
+   191→
+   192→      <div>
+   193→        <p className="text-xs font-medium text-muted-foreground mb-1">{t("diagnosis")}</p>
+   194→        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("diagnosis")} rows={2} />
+   195→      </div>
+   196→
+   197→      {/* Services & parts */}
+   198→      <div className="grid gap-3 md:grid-cols-2">
+   199→        <div>
+   200→          <h4 className="mb-2 text-sm font-semibold">{t("labor")} ({jc.services?.length ?? 0})</h4>
+   201→          <div className="overflow-x-auto rounded-lg border">
+   202→            <Table>
+   203→              <TableHeader><TableRow><TableHead className="text-xs">{t("services")}</TableHead><TableHead className="text-xs text-end">{t("total")}</TableHead></TableRow></TableHeader>
+   204→              <TableBody>
+   205→                {jc.services?.map((s: any) => (
+   206→                  <TableRow key={s.id}>
+   207→                    <TableCell className="text-xs"><span className="font-medium">{s.name}</span><span className="block text-muted-foreground">{s.hours}h</span></TableCell>
+   208→                    <TableCell className="text-xs text-end tnum font-medium">{money(s.total)}</TableCell>
+   209→                  </TableRow>
+   210→                ))}
+   211→              </TableBody>
+   212→            </Table>
+   213→          </div>
+   214→        </div>
+   215→        <div>
+   216→          <h4 className="mb-2 text-sm font-semibold">{t("parts")} ({jc.parts?.length ?? 0})</h4>
+   217→          <div className="overflow-x-auto rounded-lg border">
+   218→            <Table>
+   219→              <TableHeader><TableRow><TableHead className="text-xs">{t("name")}</TableHead><TableHead className="text-xs text-end">{t("quantity")}</TableHead><TableHead className="text-xs text-end">{t("total")}</TableHead></TableRow></TableHeader>
+   220→              <TableBody>
+   221→                {jc.parts?.map((p: any) => (
+   222→                  <TableRow key={p.id}>
+   223→                    <TableCell className="text-xs"><span className="font-medium">{p.part?.name}</span><StatusBadge status={p.status} label={p.status} /></TableCell>
+   224→                    <TableCell className="text-xs text-end tnum">{p.quantity}</TableCell>
+   225→                    <TableCell className="text-xs text-end tnum font-medium">{money(p.total)}</TableCell>
+   226→                  </TableRow>
+   227→                ))}
+   228→              </TableBody>
+   229→            </Table>
+   230→          </div>
+   231→        </div>
+   232→      </div>
+   233→
+   234→      {/* Totals */}
+   235→      <div className="ms-auto w-full max-w-xs space-y-1 text-sm">
+   236→        <Row label={t("laborTotal")} value={money(jc.laborTotal)} />
+   237→        <Row label={t("partsTotal")} value={money(jc.partsTotal)} />
+   238→        {jc.discount > 0 && <Row label={t("discount")} value={"- " + money(jc.discount)} />}
+   239→        <Row label={t("tax")} value={money(jc.tax)} />
+   240→        <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(jc.grandTotal)}</span></div>
+   241→      </div>
+   242→
+   243→      {/* Status workflow */}
+   244→      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 p-3">
+   245→        <Clock className="h-4 w-4 text-muted-foreground" />
+   246→        <span className="text-xs font-medium text-muted-foreground">{t("status")}:</span>
+   247→        <Select defaultValue={jc.status} onValueChange={(v) => advance(v)}>
+   248→          <SelectTrigger className="h-8 w-44 text-xs"><SelectValue /></SelectTrigger>
+   249→          <SelectContent>
+   250→            {STATUSES.map((s) => <SelectItem key={s} value={s}>{t("status_" + s)}</SelectItem>)}
+   251→          </SelectContent>
+   252→        </Select>
+   253→        {next && (
+   254→          <Button size="sm" variant="default" onClick={() => advance(next)}>
+   255→            <ArrowRight className="h-3.5 w-3.5 me-1" />{t("status_" + next)}
+   256→          </Button>
+   257→        )}
+   258→        <Button size="sm" variant="outline" className="ms-auto no-print" onClick={() => window.print()}><Printer className="h-3.5 w-3.5 me-1" />{t("print")}</Button>
+   259→      </div>
+   260→
+   261→      {/* Auto-invoice banner — the invoice is created automatically when the job card is created */}
+   262→      {jc.invoice ? (
+   263→        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300/60 bg-emerald-50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/30">
+   264→          <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
+   265→          <div className="min-w-0 flex-1">
+   266→            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{t("autoInvoiceCreated")}</p>
+   267→            <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">{t("autoInvoiceHint")}</p>
+   268→          </div>
+   269→          <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-mono text-xs font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 tnum">{jc.invoice.code}</span>
+   270→          {onOpenInvoice && (
+   271→            <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300" onClick={() => onOpenInvoice(jc.invoice.id)}>
+   272→              <FileText className="h-3.5 w-3.5 me-1" />{t("viewInvoice")}
+   273→            </Button>
+   274→          )}
+   275→        </div>
+   276→      ) : null}
+   277→    </div>
+   278→  );
+   279→}
+   280→
+   281→function Info({ label, value }: { label: string; value: string }) {
+   282→  return (
+   283→    <div className="rounded-lg border p-2">
+   284→      <p className="text-[10px] text-muted-foreground">{label}</p>
+   285→      <p className="mt-0.5 text-sm font-medium truncate">{value || "—"}</p>
+   286→    </div>
+   287→  );
+   288→}
+   289→
+   290→function Row({ label, value }: { label: string; value: string }) {
+   291→  return <div className="flex justify-between text-muted-foreground"><span>{label}</span><span className="tnum">{value}</span></div>;
+   292→}
+   293→
+   294→// ─── Create Dialog ─────────────────────────────────────────
+   295→function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+   296→  const { t, lang } = useT();
+   297→  const { data: cust } = useApi<any>("/api/customers");
+   298→  const { data: svc } = useApi<any>("/api/services");
+   299→  const { data: parts } = useApi<any>("/api/parts");
+   300→  const { data: tenants } = useApi<any>("/api/settings");
+   301→  const taxPercent = tenants?.taxPercent ?? 0;
+   302→  const { invalidate, toastSuccess, toastError } = useApiMutation();
+   303→  const [saving, setSaving] = useState(false);
+   304→
+   305→  const [customerId, setCustomerId] = useState("");
+   306→  const [vehicleId, setVehicleId] = useState("");
+   307→  const [complaint, setComplaint] = useState("");
+   308→  const [diagnosis, setDiagnosis] = useState("");
+   309→  const [technicianId, setTechnicianId] = useState("");
+   310→  const [priority, setPriority] = useState("normal");
+   311→  const [estimatedCompletion, setEstimatedCompletion] = useState("");
+   312→  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+   313→  const [customServices, setCustomServices] = useState<Array<{ id: string; name: string; price: number }>>([]);
+   314→  const [selectedParts, setSelectedParts] = useState<Record<string, number>>({});
+   315→
+   316→  const customers = cust?.items || [];
+   317→  const services = svc?.items || [];
+   318→  const allParts = parts?.items || [];
+   319→  const selectedCustomer = customers.find((c: any) => c.id === customerId) || null;
+   320→  const vehicles = selectedCustomer?.vehicles || [];
+   321→
+   322→  const calc = useMemo(() => {
+   323→    const svcs = services.filter((s: any) => selectedServices.includes(s.id));
+   324→    const catalogLabor = svcs.reduce((sum: number, s: any) => sum + s.price, 0);
+   325→    const customLabor = customServices.reduce((sum: number, c) => sum + (Number(c.price) || 0), 0);
+   326→    const laborTotal = catalogLabor + customLabor;
+   327→    const partItems = Object.entries(selectedParts).map(([pid, qty]) => {
+   328→      const p = allParts.find((x: any) => x.id === pid);
+   329→      return p ? { ...p, qty } : null;
+   330→    }).filter(Boolean);
+   331→    const partsTotal = partItems.reduce((sum: number, p: any) => sum + p.sellingPrice * p.qty, 0);
+   332→    const subtotal = laborTotal + partsTotal;
+   333→    const tax = Math.round((subtotal * taxPercent) / 100 * 1000) / 1000;
+   334→    const grand = Math.round((subtotal + tax) * 1000) / 1000;
+   335→    return { svcs, partItems, laborTotal, partsTotal, tax, grand, customLabor };
+   336→  }, [selectedServices, selectedParts, services, allParts, taxPercent, customServices]);
+   337→
+   338→  const reset = () => {
+   339→    setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({}); setCustomServices([]);
+   340→  };
+   341→
+   342→  const submit = async () => {
+   343→    if (!customerId || !vehicleId || !complaint) return toastError(t("required"));
+   344→    setSaving(true);
+   345→    try {
+   346→      const servicesPayload = [
+   347→        ...calc.svcs.map((s: any) => ({ serviceId: s.id, name: s.name, hours: s.durationHours, laborPrice: s.price, discount: 0, total: s.price })),
+   348→        ...customServices.map((c) => ({ serviceId: null, name: c.name, hours: 0, laborPrice: Number(c.price) || 0, discount: 0, total: Number(c.price) || 0 })),
+   349→      ];
+   350→      const jobParts = calc.partItems.map((p: any) => ({ partId: p.id, quantity: p.qty, unitPrice: p.sellingPrice, discount: 0, total: p.sellingPrice * p.qty }));
+   351→      await fetch("/api/job-cards", {
+   352→        method: "POST",
+   353→        headers: { "Content-Type": "application/json" },
+   354→        body: JSON.stringify({ customerId, vehicleId, complaint, diagnosis, technicianId, priority, estimatedCompletion, services: servicesPayload, parts: jobParts, status: "draft" }),
+   355→      });
+   356→      invalidate(["/api/job-cards", "/api/parts", "/api/dashboard"]);
+   357→      toastSuccess();
+   358→      reset();
+   359→      onOpenChange(false);
+   360→    } catch {
+   361→      toastError("Error");
+   362→    } finally {
+   363→      setSaving(false);
+   364→    }
+   365→  };
+   366→
+   367→  return (
+   368→    <Dialog open={open} onOpenChange={onOpenChange}>
+   369→      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto scroll-thin">
+   370→        <DialogHeader>
+   371→          <DialogTitle className="flex items-center gap-2"><Wrench className="h-5 w-5" />{t("addNew")} · {t("jobCards")}</DialogTitle>
+   372→          <DialogDescription>{t("complaint")} → {t("inspection")} → {t("estimateFor")} → {t("jobCards")}</DialogDescription>
+   373→        </DialogHeader>
+   374→
+   375→        <div className="space-y-4">
+   376→          <div className="grid gap-3 sm:grid-cols-2">
+   377→            <Field label={`${t("customer")} *`}>
+   378→              <CustomerPicker
+   379→                customers={customers}
+   380→                selected={selectedCustomer}
+   381→                onSelect={(c) => { setCustomerId(c.id); setVehicleId(""); }}
+   382→                onClear={() => { setCustomerId(""); setVehicleId(""); }}
+   383→              />
+   384→            </Field>
+   385→            <Field label={`${t("vehicle")} *`}>
+   386→              <Select value={vehicleId} onValueChange={setVehicleId} disabled={!customerId}>
+   387→                <SelectTrigger><SelectValue placeholder={t("vehicle")} /></SelectTrigger>
+   388→                <SelectContent>
+   389→                  {vehicles.map((v: any) => <SelectItem key={v.id} value={v.id}>{v.plateNumber} · {v.make} {v.model}</SelectItem>)}
+   390→                </SelectContent>
+   391→              </Select>
+   392→            </Field>
+   393→            <Field label={t("complaint")}>
+   394→              <Input value={complaint} onChange={(e) => setComplaint(e.target.value)} placeholder={t("complaint")} />
+   395→            </Field>
+   396→            <Field label={t("diagnosis")}>
+   397→              <Input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder={t("diagnosis")} />
+   398→            </Field>
+   399→            <Field label={t("priority")}>
+   400→              <Select value={priority} onValueChange={setPriority}>
+   401→                <SelectTrigger><SelectValue /></SelectTrigger>
+   402→                <SelectContent>
+   403→                  {["low", "normal", "high", "urgent"].map((p) => <SelectItem key={p} value={p}>{t("status_" + p)}</SelectItem>)}
+   404→                </SelectContent>
+   405→              </Select>
+   406→            </Field>
+   407→            <Field label={t("estimatedCompletion")}>
+   408→              <Input type="datetime-local" value={estimatedCompletion} onChange={(e) => setEstimatedCompletion(e.target.value)} />
+   409→            </Field>
+   410→          </div>
+   411→
+   412→          {/* Services — searchable list */}
+   413→          <ServicePicker
+   414→            services={services}
+   415→            selected={selectedServices}
+   416→            onToggle={(id) => setSelectedServices(selectedServices.includes(id) ? selectedServices.filter((x) => x !== id) : [...selectedServices, id])}
+   417→            onClear={() => setSelectedServices([])}
+   418→          />
+   419→
+   420→          {/* Other Services — custom name + manual price */}
+   421→          <CustomServicesEditor
+   422→            services={customServices}
+   423→            onChange={setCustomServices}
+   424→          />
+   425→
+   426→          {/* Parts — searchable list */}
+   427→          <PartPicker
+   428→            parts={allParts}
+   429→            selected={selectedParts}
+   430→            onToggle={(id) => setSelectedParts(selectedParts[id] ? ({ ...selectedParts, [id]: undefined }) : { ...selectedParts, [id]: 1 })}
+   431→            onQty={(id, qty) => setSelectedParts({ ...selectedParts, [id]: Math.max(1, qty) })}
+   432→            onClear={() => setSelectedParts({})}
+   433→          />
+   434→
+   435→          {/* Totals */}
+   436→          <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
+   437→            <Row label={t("laborTotal")} value={formatMoney(calc.laborTotal, "OMR", lang)} />
+   438→            <Row label={t("partsTotal")} value={formatMoney(calc.partsTotal, "OMR", lang)} />
+   439→            <Row label={t("tax")} value={formatMoney(calc.tax, "OMR", lang)} />
+   440→            <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{formatMoney(calc.grand, "OMR", lang)}</span></div>
+   441→          </div>
+   442→
+   443→          <div className="flex justify-end gap-2 pt-1">
+   444→            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
+   445→            <Button onClick={submit} disabled={saving}>{t("create")}</Button>
+   446→          </div>
+   447→        </div>
+   448→      </DialogContent>
+   449→    </Dialog>
+   450→  );
+   451→}
+   452→
+   453→// ─── Customer Picker (search by name / phone / plate) ──────────
+   454→function CustomerPicker({ customers, selected, onSelect, onClear }: { customers: any[]; selected: any; onSelect: (c: any) => void; onClear: () => void }) {
+   455→  const { t, lang } = useT();
+   456→  const [query, setQuery] = useState("");
+   457→  const [open, setOpen] = useState(false);
+   458→
+   459→  const filtered = useMemo(() => {
+   460→    const q = query.trim().toLowerCase();
+   461→    if (!q) return customers.slice(0, 30);
+   462→    return customers.filter((c) => {
+   463→      const byName = c.name.toLowerCase().includes(q);
+   464→      const byPhone = (c.mobile || "").toLowerCase().includes(q) || (c.whatsapp || "").toLowerCase().includes(q);
+   465→      const byPlate = (c.vehicles || []).some((v: any) => (v.plateNumber || "").toLowerCase().includes(q));
+   466→      return byName || byPhone || byPlate;
+   467→    }).slice(0, 30);
+   468→  }, [customers, query]);
+   469→
+   470→  // Selected customer card
+   471→  if (selected) {
+   472→    return (
+   473→      <div className="flex items-start justify-between gap-2 rounded-lg border bg-muted/30 p-2.5">
+   474→        <div className="min-w-0">
+   475→          <p className="truncate text-sm font-semibold">{selected.name}</p>
+   476→          <p className="truncate text-xs text-muted-foreground">{t("mobile")}: {selected.mobile}</p>
+   477→          <p className="truncate text-xs text-muted-foreground">{t("vehiclesCount")}: {selected.vehicles?.length ?? 0}</p>
+   478→        </div>
+   479→        <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 text-xs" onClick={onClear}>{t("changeCustomer")}</Button>
+   480→      </div>
+   481→    );
+   482→  }
+   483→
+   484→  return (
+   485→    <div className="relative">
+   486→      <div className="relative">
+   487→        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   488→        <Input
+   489→          value={query}
+   490→          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+   491→          onFocus={() => setOpen(true)}
+   492→          onBlur={() => setTimeout(() => setOpen(false), 150)}
+   493→          placeholder={t("searchCustomer")}
+   494→          className="ps-9"
+   495→          autoComplete="off"
+   496→        />
+   497→      </div>
+   498→      {open && (
+   499→        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md max-h-64 overflow-y-auto scroll-thin">
+   500→          {filtered.length === 0 ? (
+   501→            <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("emptyHintCustomer")}</p>
+   502→          ) : (
+   503→            filtered.map((c) => (
+   504→              <button
+   505→                key={c.id}
+   506→                type="button"
+   507→                onMouseDown={(e) => e.preventDefault()}
+   508→                onClick={() => { onSelect(c); setQuery(""); setOpen(false); }}
+   509→                className="flex w-full items-center gap-2.5 rounded px-2 py-2 text-start hover:bg-accent"
+   510→              >
+   511→                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+   512→                  {c.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+   513→                </div>
+   514→                <div className="min-w-0 flex-1">
+   515→                  <p className="truncate text-sm font-medium">{c.name}</p>
+   516→                  <p className="truncate text-xs text-muted-foreground">{c.mobile}</p>
+   517→                </div>
+   518→                {(c.vehicles?.length ?? 0) > 0 && (
+   519→                  <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tnum">
+   520→                    {c.vehicles.map((v: any) => v.plateNumber).join(" · ")}
+   521→                  </span>
+   522→                )}
+   523→              </button>
+   524→            ))
+   525→          )}
+   526→        </div>
+   527→      )}
+   528→    </div>
+   529→  );
+   530→}
+   531→
+   532→// ─── Service Picker (searchable list) ──────────────────────────
+   533→function ServicePicker({ services, selected, onToggle, onClear }: { services: any[]; selected: string[]; onToggle: (id: string) => void; onClear: () => void }) {
+   534→  const { t, lang } = useT();
+   535→  const [query, setQuery] = useState("");
+   536→
+   537→  const filtered = useMemo(() => {
+   538→    const q = query.trim().toLowerCase();
+   539→    if (!q) return services;
+   540→    return services.filter((s) => s.name.toLowerCase().includes(q) || (s.code || "").toLowerCase().includes(q));
+   541→  }, [services, query]);
+   542→
+   543→  return (
+   544→    <div>
+   545→      <div className="mb-2 flex items-center justify-between">
+   546→        <p className="text-sm font-semibold">{t("services")} <span className="text-muted-foreground">({services.length})</span></p>
+   547→        {selected.length > 0 && (
+   548→          <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({selected.length})</button>
+   549→        )}
+   550→      </div>
+   551→      <div className="relative mb-2">
+   552→        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   553→        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("searchServices")} className="ps-9" autoComplete="off" />
+   554→      </div>
+   555→      <div className="rounded-lg border max-h-44 overflow-y-auto scroll-thin divide-y">
+   556→        {filtered.length === 0 ? (
+   557→          <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("noData")}</p>
+   558→        ) : (
+   559→          filtered.map((s) => {
+   560→            const isSel = selected.includes(s.id);
+   561→            return (
+   562→              <button
+   563→                key={s.id}
+   564→                type="button"
+   565→                onClick={() => onToggle(s.id)}
+   566→                className={`flex w-full items-center gap-2 px-3 py-2 text-start text-sm transition-colors ${isSel ? "bg-primary/10" : "hover:bg-muted/50"}`}
+   567→              >
+   568→                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+   569→                  {isSel && <Check className="h-3 w-3" />}
+   570→                </div>
+   571→                <div className="min-w-0 flex-1">
+   572→                  <p className="truncate font-medium">{s.name}</p>
+   573→                  <p className="truncate text-[11px] text-muted-foreground">{s.code} · {s.durationHours}h</p>
+   574→                </div>
+   575→                <span className="shrink-0 text-xs font-semibold tnum">{formatMoney(s.price, "OMR", lang)}</span>
+   576→              </button>
+   577→            );
+   578→          })
+   579→        )}
+   580→      </div>
+   581→      {selected.length > 0 && (
+   582→        <p className="mt-1.5 text-xs text-muted-foreground">{t("selectedServices")}: <span className="font-semibold text-foreground tnum">{selected.length}</span></p>
+   583→      )}
+   584→    </div>
+   585→  );
+   586→}
+   587→
+   588→// ─── Part Picker (searchable list) ──────────────────────────────
+   589→function PartPicker({ parts, selected, onToggle, onQty, onClear }: { parts: any[]; selected: Record<string, number>; onToggle: (id: string) => void; onQty: (id: string, qty: number) => void; onClear: () => void }) {
+   590→  const { t, lang } = useT();
+   591→  const [query, setQuery] = useState("");
+   592→
+   593→  const filtered = useMemo(() => {
+   594→    const q = query.trim().toLowerCase();
+   595→    if (!q) return parts;
+   596→    return parts.filter((p) => p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || (p.barcode || "").toLowerCase().includes(q));
+   597→  }, [parts, query]);
+   598→
+   599→  const selectedCount = Object.values(selected).filter(Boolean).length;
+   600→
+   601→  return (
+   602→    <div>
+   603→      <div className="mb-2 flex items-center justify-between">
+   604→        <p className="text-sm font-semibold">{t("parts")} <span className="text-muted-foreground">({parts.length})</span></p>
+   605→        {selectedCount > 0 && (
+   606→          <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({selectedCount})</button>
+   607→        )}
+   608→      </div>
+   609→      <div className="relative mb-2">
+   610→        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   611→        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("searchParts")} className="ps-9" autoComplete="off" />
+   612→      </div>
+   613→      <div className="rounded-lg border max-h-44 overflow-y-auto scroll-thin divide-y">
+   614→        {filtered.length === 0 ? (
+   615→          <p className="px-3 py-4 text-center text-xs text-muted-foreground">{query ? t("noResultsFound") : t("noData")}</p>
+   616→        ) : (
+   617→          filtered.map((p) => {
+   618→            const qty = selected[p.id];
+   619→            const isSel = !!qty;
+   620→            const low = p.quantity <= p.minStock;
+   621→            return (
+   622→              <div key={p.id} className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${isSel ? "bg-primary/10" : "hover:bg-muted/50"}`}>
+   623→                <button type="button" onClick={() => onToggle(p.id)} className="flex min-w-0 flex-1 items-center gap-2 text-start">
+   624→                  <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+   625→                    {isSel && <Check className="h-3 w-3" />}
+   626→                  </div>
+   627→                  <div className="min-w-0 flex-1">
+   628→                    <p className="truncate font-medium">{p.name}</p>
+   629→                    <p className="truncate text-[11px] text-muted-foreground">{p.sku} · {t("stockQty")}: <span className={low ? "text-amber-600 font-semibold" : ""}>{p.quantity}</span></p>
+   630→                  </div>
+   631→                </button>
+   632→                {isSel && (
+   633→                  <input
+   634→                    type="number"
+   635→                    min={1}
+   636→                    value={qty}
+   637→                    onChange={(e) => onQty(p.id, Number(e.target.value))}
+   638→                    className="h-7 w-14 shrink-0 rounded border bg-background px-1 text-xs tnum"
+   639→                    onClick={(e) => e.stopPropagation()}
+   640→                  />
+   641→                )}
+   642→                <span className="shrink-0 text-xs font-semibold tnum">{formatMoney(p.sellingPrice, "OMR", lang)}</span>
+   643→              </div>
+   644→            );
+   645→          })
+   646→        )}
+   647→      </div>
+   648→      {selectedCount > 0 && (
+   649→        <p className="mt-1.5 text-xs text-muted-foreground">{t("selectedParts")}: <span className="font-semibold text-foreground tnum">{selectedCount}</span></p>
+   650→      )}
+   651→    </div>
+   652→  );
+   653→}
+   654→
+   655→function Field({ label, children }: { label: string; children: React.ReactNode }) {
+   656→  return (
+   657→    <div className="space-y-1.5">
+   658→      <Label className="text-xs">{label}</Label>
+   659→      {children}
+   660→    </div>
+   661→  );
+   662→}
+   663→
+   664→// ─── Custom Services editor (manual name + price) ──────────────
+   665→function CustomServicesEditor({ services, onChange }: {
+   666→  services: Array<{ id: string; name: string; price: number }>;
+   667→  onChange: (services: Array<{ id: string; name: string; price: number }>) => void;
+   668→}) {
+   669→  const { t, lang } = useT();
+   670→  const [name, setName] = useState("");
+   671→  const [price, setPrice] = useState("");
+   672→
+   673→  const add = () => {
+   674→    if (!name.trim()) return;
+   675→    const newService = { id: `custom-${Date.now()}`, name: name.trim(), price: Number(price) || 0 };
+   676→    onChange([...services, newService]);
+   677→    setName("");
+   678→    setPrice("");
+   679→  };
+   680→
+   681→  const remove = (id: string) => onChange(services.filter((s) => s.id !== id));
+   682→
+   683→  const update = (id: string, field: "name" | "price", value: string) => {
+   684→    onChange(services.map((s) => s.id === id ? { ...s, [field]: field === "price" ? (Number(value) || 0) : value } : s));
+   685→  };
+   686→
+   687→  return (
+   688→    <div>
+   689→      <div className="mb-2 flex items-center justify-between">
+   690→        <p className="text-sm font-semibold">{t("otherServices")} <span className="text-muted-foreground">({services.length})</span></p>
+   691→        {services.length > 0 && (
+   692→          <button type="button" onClick={() => onChange([])} className="text-xs text-muted-foreground hover:text-foreground">{t("remove")} ({services.length})</button>
+   693→        )}
+   694→      </div>
+   695→      <p className="mb-2 text-[10px] text-muted-foreground">{t("otherServicesHint")}</p>
+   696→
+   697→      {/* Add new custom service row */}
+   698→      <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-2">
+   699→        <Input
+   700→          value={name}
+   701→          onChange={(e) => setName(e.target.value)}
+   702→          placeholder={t("customServiceNamePlaceholder")}
+   703→          className="h-8 flex-1 text-xs"
+   704→          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+   705→        />
+   706→        <div className="relative w-28">
+   707→          <Input
+   708→            type="number"
+   709→            step="0.001"
+   710→            value={price}
+   711→            onChange={(e) => setPrice(e.target.value)}
+   712→            placeholder="0.000"
+   713→            className="h-8 text-end text-xs tnum"
+   714→            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+   715→          />
+   716→          <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">OMR</span>
+   717→        </div>
+   718→        <Button type="button" size="sm" className="h-8 shrink-0" onClick={add} disabled={!name.trim()}>
+   719→          <Plus className="h-3.5 w-3.5 me-1" />{t("add")}
+   720→        </Button>
+   721→      </div>
+   722→
+   723→      {/* List of added custom services */}
+   724→      {services.length === 0 ? (
+   725→        <p className="mt-2 text-center text-xs text-muted-foreground py-3">{t("noCustomServices")}</p>
+   726→      ) : (
+   727→        <div className="mt-2 space-y-1.5">
+   728→          {services.map((s) => (
+   729→            <div key={s.id} className="flex items-center gap-2 rounded-lg border bg-card p-2">
+   730→              <Input
+   731→                value={s.name}
+   732→                onChange={(e) => update(s.id, "name", e.target.value)}
+   733→                className="h-7 flex-1 text-xs"
+   734→              />
+   735→              <div className="relative w-28">
+   736→                <Input
+   737→                  type="number"
+   738→                  step="0.001"
+   739→                  value={s.price}
+   740→                  onChange={(e) => update(s.id, "price", e.target.value)}
+   741→                  className="h-7 text-end text-xs tnum"
+   742→                />
+   743→                <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">OMR</span>
+   744→              </div>
+   745→              <span className="w-20 text-end text-xs font-semibold tnum text-primary">
+   746→                {formatMoney(Number(s.price) || 0, "OMR", lang)}
+   747→              </span>
+   748→              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => remove(s.id)}>
+   749→                <Trash2 className="h-3.5 w-3.5" />
+   750→              </Button>
+   751→            </div>
+   752→          ))}
+   753→        </div>
+   754→      )}
+   755→    </div>
+   756→  );
+   757→}
+   758→
