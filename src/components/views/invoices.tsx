@@ -126,20 +126,65 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
 
   return (
     <div className="space-y-4">
-      {/* Print CSS — guarantees A4 page size + margins when this invoice is printed */}
+      {/* Print CSS — guarantees A4 page size + the invoice fills the page when printed */}
       <style dangerouslySetInnerHTML={{ __html: `
         @page { size: A4; margin: 10mm; }
         @media print {
-          html { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          body { background: #fff !important; margin: 0 !important; padding: 0 !important; font-size: 11px !important; color: #000 !important; }
-          .no-print, aside, nav, header, footer { display: none !important; }
-          [role="dialog"] { position: static !important; background: #fff !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-height: none !important; overflow: visible !important; }
-          [data-radix-overlay], [data-radix-popper-content-wrapper] { display: none !important; }
-          body > [data-radix-portal] { display: contents !important; }
-          body > *:not([data-radix-portal]) { display: none !important; }
-          .print-area { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: none !important; background: #fff !important; width: 100% !important; max-width: 100% !important; }
-          table, tr, td, th { page-break-inside: avoid; break-inside: avoid; }
+          html, body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 11px !important;
+            color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          /* Hide everything in the body by default */
+          body > * { display: none !important; }
+          /* Show only the dialog (Radix mounts it directly under body) */
+          body > [role="dialog"],
+          body > [data-slot="dialog-content"],
+          [data-slot="dialog-content"],
+          [role="dialog"] {
+            display: block !important;
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            transform: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+            max-height: none !important;
+            width: 100% !important;
+            overflow: visible !important;
+            background: #fff !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          /* Reset the dialog's scroll wrapper so the invoice shows inline */
+          [role="dialog"] > * { display: block !important; }
+          /* Hide anything marked no-print (buttons, dialog header, etc.) */
+          .no-print { display: none !important; }
+          /* The printable invoice: expand to full A4 width */
+          .print-area {
+            position: static !important;
+            display: block !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: #fff !important;
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          /* Avoid breaking tables across pages */
+          table, tr, td, th {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
           thead { display: table-header-group; }
+          img { max-width: 100% !important; }
           h1, h2, h3, h4 { color: #000 !important; }
         }
       ` }} />
