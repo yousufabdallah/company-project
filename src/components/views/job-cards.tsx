@@ -154,7 +154,7 @@ function JobCardDetail({ jc, money, onClose, onOpenInvoice }: { jc: any; money: 
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   // Fetch tenant settings to show the tax percentage on the tax row.
   const { data: settings } = useApi<any>("/api/settings");
-  const taxPercent = settings?.taxPercent ?? 0;
+  const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const [notes, setNotes] = useState(jc.diagnosis || "");
 
   const nextStatus = (s: string) => {
@@ -301,7 +301,7 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const { data: svc } = useApi<any>("/api/services");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: tenants } = useApi<any>("/api/settings");
-  const taxPercent = tenants?.taxPercent ?? 0;
+  const taxPercent = tenants?.taxEnabled ? (tenants?.taxPercent ?? 0) : 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [saving, setSaving] = useState(false);
 

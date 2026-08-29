@@ -28,7 +28,7 @@ export function PosView() {
   const { data: posData } = useApi<any>("/api/pos");
   const { data: settings } = useApi<any>("/api/settings");
   const { invalidate, toastSuccess, toastError } = useApiMutation();
-  const taxPercent = settings?.taxPercent ?? 0;
+  const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const currency = settings?.currency ?? "OMR";
 
   const [query, setQuery] = useState("");
@@ -65,7 +65,7 @@ export function PosView() {
   // Cart calculations
   const subtotal = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
   const discountNum = Number(discount) || 0;
-  const tax = Math.round(((subtotal - discountNum) * taxPercent) / 100 * 1000) / 1000;
+  const tax = taxPercent > 0 ? Math.round(((subtotal - discountNum) * taxPercent) / 100 * 1000) / 1000 : 0;
   const grand = Math.round((subtotal - discountNum + tax) * 1000) / 1000;
   const paid = paidAmount ? Number(paidAmount) : grand;
   const change = Math.max(0, paid - grand);

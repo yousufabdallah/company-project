@@ -106,7 +106,7 @@ function EstimateDetail({ est, money, onClose }: { est: any; money: (n: number) 
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   // Fetch tenant settings to show the tax percentage on the tax row.
   const { data: settings } = useApi<any>("/api/settings");
-  const taxPercent = settings?.taxPercent ?? 0;
+  const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
 
   const setStatus = async (status: string) => {
     try {
@@ -196,7 +196,7 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const { data: svc } = useApi<any>("/api/services");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: settings } = useApi<any>("/api/settings");
-  const taxPercent = settings?.taxPercent ?? 0;
+  const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
 
   const [customerId, setCustomerId] = useState("");

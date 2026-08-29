@@ -91,7 +91,7 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const { data: wh } = useApi<any>("/api/dashboard");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: settings } = useApi<any>("/api/settings");
-  const taxPercent = settings?.taxPercent ?? 0;
+  const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<any[]>([]);
