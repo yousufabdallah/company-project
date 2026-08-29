@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   UserCog,
   ScrollText,
+  ScanLine,
   type LucideIcon,
 } from "lucide-react";
 import type { ViewKey } from "@/lib/store";
@@ -50,6 +51,7 @@ export const NAV: NavGroup[] = [
     items: [
       { key: "services", labelKey: "services", icon: Settings2 },
       { key: "inventory", labelKey: "inventory", icon: Package },
+      { key: "pos", labelKey: "pos", icon: ScanLine },
       { key: "suppliers", labelKey: "suppliers", icon: Truck },
       { key: "purchases", labelKey: "purchases", icon: ShoppingCart },
     ],

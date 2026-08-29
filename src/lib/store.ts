@@ -11,6 +11,7 @@ export type ViewKey =
   | "technicians"
   | "services"
   | "inventory"
+  | "pos"
   | "suppliers"
   | "purchases"
   | "invoices"

@@ -13,6 +13,7 @@ import { EstimatesView } from "@/components/views/estimates";
 import { JobCardsView } from "@/components/views/job-cards";
 import { ServicesView } from "@/components/views/services";
 import { InventoryView } from "@/components/views/inventory";
+import { PosView } from "@/components/views/pos";
 import { SuppliersView } from "@/components/views/suppliers";
 import { PurchasesView } from "@/components/views/purchases";
 import { InvoicesView } from "@/components/views/invoices";
@@ -43,6 +44,7 @@ export function AppShell() {
               {view === "jobCards" && <JobCardsView />}
               {view === "services" && <ServicesView />}
               {view === "inventory" && <InventoryView />}
+              {view === "pos" && <PosView />}
               {view === "suppliers" && <SuppliersView />}
               {view === "purchases" && <PurchasesView />}
               {view === "invoices" && <InvoicesView />}
