@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { requireSuperAdmin } from "@/lib/auth-server";
 
 // Seed additional demo tenants for the Super Admin view if only one exists
 async function ensureDemoTenants() {
@@ -44,6 +45,13 @@ async function ensureDemoTenants() {
 const PLAN_PRICES: Record<string, number> = { Basic: 29, Professional: 79, Enterprise: 199 };
 
 export async function GET() {
+  // Protect this route — only authenticated super admins can access
+  try {
+    await requireSuperAdmin();
+  } catch {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   await ensureDemoTenants();
 
   const tenants = await db.tenant.findMany({

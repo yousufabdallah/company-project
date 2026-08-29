@@ -2,7 +2,7 @@
 
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/format";
-import { authenticate, DEMO_USERS } from "@/lib/auth";
+import { DEMO_ROLES } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,9 +15,30 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Wrench, ArrowLeft, ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
+import { Wrench, ArrowLeft, ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+async function apiLogin(email: string, password: string) {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (res.status === 401) throw new Error("invalid_credentials");
+  if (!res.ok) throw new Error("error");
+  return res.json();
+}
+
+async function apiDemoLogin(role: string) {
+  const res = await fetch("/api/auth/demo-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) throw new Error("error");
+  return res.json();
+}
 
 export function LoginScreen() {
   const { t, lang } = useT();
@@ -28,31 +49,43 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<string | null>(null);
   const Arrow = lang === "ar" ? ArrowLeft : ArrowRight;
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      const user = authenticate(email, password);
-      if (user) {
-        login({ name: user.name, email: user.email, role: user.role, tenantName: user.tenantName });
-        toast.success(`${t("signInAs")} ${user.name}`);
-      } else {
-        setError(t("invalidCredentials"));
-      }
+    try {
+      const user = await apiLogin(email, password);
+      login(user);
+      toast.success(`${t("signInAs")} ${user.name}`);
+    } catch (err: any) {
+      setError(err.message === "invalid_credentials" ? t("invalidCredentials") : "Error");
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
-  // Discreet demo login — logs in directly without exposing credentials on screen
-  const demoLogin = (role: string) => {
-    const user = DEMO_USERS.find((u) => u.role === role);
-    if (user) {
-      login({ name: user.name, email: user.email, role: user.role, tenantName: user.tenantName });
+  // Discreet demo login — logs in via the demo-login API (no credentials on screen)
+  const demoLogin = async (role: string) => {
+    setError("");
+    setDemoLoading(role);
+    try {
+      const user = await apiDemoLogin(role);
+      login(user);
       toast.success(`${t("signInAs")} ${user.name}`);
+    } catch {
+      setError("Error");
+    } finally {
+      setDemoLoading(null);
     }
+  };
+
+  const roleLabel = (role: string) => {
+    const key = "demo" + role.charAt(0).toUpperCase() + role.slice(1);
+    const label = t(key);
+    return label === key ? role.replace("_", " ") : label;
   };
 
   return (
@@ -138,6 +171,7 @@ export function LoginScreen() {
               )}
 
               <Button type="submit" className="w-full" disabled={loading}>
+                {loading && <Loader2 className="h-4 w-4 animate-spin me-1" />}
                 {loading ? t("loading") : t("signIn")}
                 {!loading && <Arrow className="h-4 w-4 ms-1" />}
               </Button>
@@ -164,18 +198,19 @@ export function LoginScreen() {
                     {t("signInAs")}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {DEMO_USERS.map((u) => (
+                  {DEMO_ROLES.map((role) => (
                     <DropdownMenuItem
-                      key={u.role}
-                      onClick={() => demoLogin(u.role)}
+                      key={role}
+                      onClick={() => demoLogin(role)}
                       className="cursor-pointer gap-2.5 py-1.5"
                     >
-                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${u.role === "super_admin" ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
-                        {u.role === "super_admin" ? <ShieldCheck className="h-3 w-3" /> : u.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${role === "super_admin" ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
+                        {role === "super_admin" ? <ShieldCheck className="h-3 w-3" /> : role.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium">{t("demo" + u.role.charAt(0).toUpperCase() + u.role.slice(1))}</p>
+                        <p className="truncate text-xs font-medium">{roleLabel(role)}</p>
                       </div>
+                      {demoLoading === role && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

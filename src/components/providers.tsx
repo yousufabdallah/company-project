@@ -18,6 +18,30 @@ function LangDirManager() {
   return null;
 }
 
+// Restore an existing session (httpOnly cookie) on app load
+function SessionHydrator() {
+  const login = useApp((s) => s.login);
+  const user = useApp((s) => s.user);
+  const screen = useApp((s) => s.screen);
+  useEffect(() => {
+    // Only hydrate if we don't already have a user (avoids overriding logout on landing)
+    if (user || screen !== "landing") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.user) {
+          login(data.user);
+        }
+      } catch {
+        // ignore — stay on landing
+      }
+    })();
+  }, [login, user, screen]);
+  return null;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
     () =>
@@ -30,6 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
       <QueryClientProvider client={client}>
         <LangDirManager />
+        <SessionHydrator />
         {children}
         <Toaster />
         <SonnerToaster position="top-center" />

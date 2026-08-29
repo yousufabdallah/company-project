@@ -65,7 +65,7 @@ export function SuperAdminScreen() {
             </h1>
             <p className="text-sm text-muted-foreground">{t("superAdminSubtitle")} · {user?.name}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={logout}>
+          <Button variant="outline" size="sm" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); logout(); }}>
             <LogOut className="h-4 w-4 me-1" />
             {t("backToWorkshop")}
           </Button>
@@ -203,7 +203,7 @@ function SuperAdminHeader() {
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        <Button variant="ghost" size="sm" onClick={logout}>
+        <Button variant="ghost" size="sm" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); logout(); }}>
           <LogOut className="h-4 w-4 me-1" />
           {t("backToWorkshop")}
         </Button>

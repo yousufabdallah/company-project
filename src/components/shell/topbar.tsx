@@ -166,7 +166,7 @@ export function Topbar() {
             <DropdownMenuItem onClick={() => setView("settings")}>{t("settings")}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setView("auditLogs")}>{t("auditLogs")}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={logout}>
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); logout(); }}>
               <LogOut className="h-4 w-4 me-2" />
               {t("backToHome")}
             </DropdownMenuItem>
