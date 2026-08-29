@@ -218,6 +218,12 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
           /* 6. Show all children of the dialog + the print-area normally */
           [role="dialog"] > * { display: block !important; }
 
+          /* 7. CRITICAL: re-hide no-print AFTER rule 6 (higher specificity wins) */
+          [role="dialog"] .no-print,
+          [role="dialog"] [data-slot="dialog-close"] {
+            display: none !important;
+          }
+
           .print-area {
             position: static !important;
             display: block !important;
@@ -245,10 +251,10 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
           {/* Logo (left) — large */}
           <div className="shrink-0">
             {tn.logo ? (
-              <img src={tn.logo} alt={tn.name} className="h-28 w-28 rounded-lg object-contain" key={tn.logo} />
+              <img src={tn.logo} alt={tn.name} className="h-32 w-32 rounded-lg object-contain" key={tn.logo} />
             ) : (
-              <div className="flex h-28 w-28 items-center justify-center rounded-lg bg-slate-900 text-white">
-                <Receipt className="h-14 w-14" />
+              <div className="flex h-32 w-32 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Receipt className="h-16 w-16" />
               </div>
             )}
           </div>
