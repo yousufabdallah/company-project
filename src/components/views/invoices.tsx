@@ -90,7 +90,7 @@ export function InvoicesView() {
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto scroll-thin">
-          <DialogHeader>
+          <DialogHeader className="no-print">
             <DialogTitle className="flex items-center gap-2"><Receipt className="h-5 w-5" />{detail?.code}<StatusBadge status={detail?.status} /></DialogTitle>
             <DialogDescription className="sr-only">{t("invoices")}</DialogDescription>
           </DialogHeader>
@@ -126,6 +126,23 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
 
   return (
     <div className="space-y-4">
+      {/* Print CSS — guarantees A4 page size + margins when this invoice is printed */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @page { size: A4; margin: 10mm; }
+        @media print {
+          html { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body { background: #fff !important; margin: 0 !important; padding: 0 !important; font-size: 11px !important; color: #000 !important; }
+          .no-print, aside, nav, header, footer { display: none !important; }
+          [role="dialog"] { position: static !important; background: #fff !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-height: none !important; overflow: visible !important; }
+          [data-radix-overlay], [data-radix-popper-content-wrapper] { display: none !important; }
+          body > [data-radix-portal] { display: contents !important; }
+          body > *:not([data-radix-portal]) { display: none !important; }
+          .print-area { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: none !important; background: #fff !important; width: 100% !important; max-width: 100% !important; }
+          table, tr, td, th { page-break-inside: avoid; break-inside: avoid; }
+          thead { display: table-header-group; }
+          h1, h2, h3, h4 { color: #000 !important; }
+        }
+      ` }} />
       <div className="rounded-lg border bg-white p-6 sm:p-8 print-area text-slate-900 shadow-sm">
         {/* ─── Premium header: logo + workshop info (left) ─ invoice title (right) ─── */}
         <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4">

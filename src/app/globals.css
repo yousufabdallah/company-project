@@ -149,24 +149,97 @@ html.lang-ar {
   background-color: var(--muted-foreground);
 }
 
-/* Print styles */
+/* Print styles — A4 invoices */
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
 @media print {
-  .no-print {
+  /* Hide everything that shouldn't be on paper */
+  .no-print,
+  header.no-print,
+  aside,
+  nav,
+  footer,
+  [data-radix-popper-content-wrapper],
+  [role="dialog"] > button[type="button"],
+  .no-print * {
     display: none !important;
   }
-  .print-area {
-    position: absolute !important;
-    inset: 0 !important;
-    margin: 0 !important;
-    padding: 16px !important;
-    background: #fff !important;
-    color: #000 !important;
+
+  /* Force color printing (logos + stamps + badges) */
+  html {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body {
     background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+    color: #000 !important;
   }
-  @page {
-    margin: 12mm;
+
+  /* The printable invoice: take full A4 page width */
+  .print-area {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Ensure dialog content (the invoice) is visible + centered on A4 */
+  [role="dialog"] {
+    position: static !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  [role="dialog"]::backdrop,
+  [data-radix-overlay] {
+    display: none !important;
+  }
+  body > *:not(.print-area-wrap):not([role="dialog"]) {
+    display: none !important;
+  }
+  /* Radix dialog portal renders at body root — keep the dialog and its print area only */
+  body > [data-radix-portal] {
+    display: contents !important;
+  }
+  [role="dialog"] .no-print {
+    display: none !important;
+  }
+
+  /* Avoid breaking tables/rows across pages */
+  table, tr, td, th {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+
+  /* Images (logos/stamps) print at their natural resolution */
+  img {
+    max-width: 100% !important;
+  }
+
+  /* Force black headings on paper for crisp text */
+  h1, h2, h3, h4 {
+    color: #000 !important;
   }
 }
 
