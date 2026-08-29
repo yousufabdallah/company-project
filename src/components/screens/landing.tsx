@@ -77,7 +77,7 @@ export function LandingScreen() {
               {mounted && theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setScreen("login")} className="hidden sm:inline-flex">{t("heroLogin")}</Button>
-            <Button size="sm" onClick={() => setScreen("login")}>{t("heroCta")}</Button>
+            <Button size="sm" onClick={() => setScreen("signup")}>{t("heroCta")}</Button>
           </div>
         </div>
       </header>
@@ -97,7 +97,7 @@ export function LandingScreen() {
             {t("heroSubtitle")}
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button size="lg" onClick={() => setScreen("login")} className="w-full sm:w-auto">
+            <Button size="lg" onClick={() => setScreen("signup")} className="w-full sm:w-auto">
               {t("heroCta")}
               <Arrow className="h-4 w-4 ms-2" />
             </Button>
@@ -165,7 +165,7 @@ export function LandingScreen() {
                   <Button
                     className="mt-6 w-full"
                     variant={p.popular ? "default" : "outline"}
-                    onClick={() => setScreen("login")}
+                    onClick={() => setScreen("signup")}
                   >
                     {t("choosePlan")}
                   </Button>
@@ -181,7 +181,7 @@ export function LandingScreen() {
         <div className="mx-auto max-w-4xl px-4 py-16 text-center">
           <h2 className="text-2xl font-bold sm:text-3xl">{t("ctaTitle")}</h2>
           <p className="mt-2 text-sm opacity-90">{t("ctaSubtitle")}</p>
-          <Button size="lg" variant="secondary" className="mt-6" onClick={() => setScreen("login")}>
+          <Button size="lg" variant="secondary" className="mt-6" onClick={() => setScreen("signup")}>
             {t("heroCta")}
             <Arrow className="h-4 w-4 ms-2" />
           </Button>

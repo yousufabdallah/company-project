@@ -178,7 +178,7 @@ export function LoginScreen() {
 
               <div className="text-center text-xs text-muted-foreground">
                 {t("dontHaveAccount")}{" "}
-                <button type="button" onClick={() => setScreen("landing")} className="font-medium text-primary hover:underline">
+                <button type="button" onClick={() => setScreen("signup")} className="font-medium text-primary hover:underline">
                   {t("startTrial")}
                 </button>
               </div>

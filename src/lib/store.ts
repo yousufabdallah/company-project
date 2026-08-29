@@ -23,7 +23,7 @@ export type ViewKey =
   | "settings";
 
 // Top-level screen router (public vs authenticated)
-export type Screen = "landing" | "login" | "app" | "superadmin";
+export type Screen = "landing" | "login" | "signup" | "app" | "superadmin";
 
 export interface AuthUser {
   name: string;
