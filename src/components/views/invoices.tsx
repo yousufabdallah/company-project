@@ -240,15 +240,15 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
         }
       ` }} />
       <div className="rounded-lg border bg-white p-6 sm:p-8 print-area text-slate-900 shadow-sm">
-        {/* ─── Header: logo on left, workshop name centered, invoice info on right ─── */}
+        {/* ─── Header: logo on left (big), workshop name centered, invoice info on right ─── */}
         <div className="flex items-center justify-between gap-4 border-b-2 border-slate-800 pb-4">
-          {/* Logo (left) — bigger */}
+          {/* Logo (left) — large */}
           <div className="shrink-0">
             {tn.logo ? (
-              <img src={tn.logo} alt={tn.name} className="h-20 w-20 rounded-lg object-contain" key={tn.logo} />
+              <img src={tn.logo} alt={tn.name} className="h-28 w-28 rounded-lg object-contain" key={tn.logo} />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-slate-900 text-white">
-                <Receipt className="h-10 w-10" />
+              <div className="flex h-28 w-28 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Receipt className="h-14 w-14" />
               </div>
             )}
           </div>
@@ -266,8 +266,8 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
             {tn.crNumber && <p className="text-[11px] text-slate-600">{t("crNumber")}: {tn.crNumber}</p>}
           </div>
 
-          {/* Invoice info (right) — number + date + status only, no logo here */}
-          <div className="shrink-0 text-end">
+          {/* Invoice info (right) — only on screen, hidden when printing */}
+          <div className="shrink-0 text-end no-print">
             <h3 className="text-xl font-bold uppercase tracking-wide text-slate-900">{t("invoices")}</h3>
             <p className="mt-1 inline-block rounded bg-slate-900 px-2 py-0.5 font-mono text-sm font-bold text-white tnum">{inv.code}</p>
             <p className="mt-1 text-xs text-slate-600">{formatDate(inv.date, lang)}</p>
@@ -275,6 +275,12 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
               <StatusBadge status={inv.status} />
             </div>
           </div>
+        </div>
+
+        {/* Invoice number + date + status — visible only when printing (bottom of header area) */}
+        <div className="hidden print:flex items-center justify-end gap-4 py-2 text-xs">
+          <span className="font-mono font-bold tnum">{inv.code}</span>
+          <span className="text-slate-600">{formatDate(inv.date, lang)}</span>
         </div>
 
         {/* ─── Bill To section ─── */}
