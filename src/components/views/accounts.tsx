@@ -1,13 +1,16 @@
 "use client";
 
 import { useT, formatMoney, formatDateTime } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
+import { useApi, useApiMutation, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Banknote, CreditCard, Landmark, Wallet, ArrowDownLeft, ArrowUpRight, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import { Banknote, CreditCard, Landmark, Wallet, ArrowDownLeft, ArrowUpRight, TrendingUp, TrendingDown, Scale, ArrowUpFromLine, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 const METHOD_ICONS: Record<string, any> = {
@@ -30,6 +33,8 @@ export function AccountsView() {
   const [methodFilter, setMethodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [q, setQ] = useState("");
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const [withdrawDialog, setWithdrawDialog] = useState<any>(null);
 
   const money = (n: number) => formatMoney(n, "OMR", lang);
 
@@ -156,11 +161,35 @@ export function AccountsView() {
                     {t("lastTransaction")}: {formatDateTime(acc.lastDate, lang)}
                   </p>
                 )}
+
+                {/* Withdraw button — only enabled if balance > 0 */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`mt-3 w-full h-8 text-xs ${colors.text} ${colors.bg} border-current/30 hover:opacity-80`}
+                  disabled={acc.net <= 0}
+                  onClick={() => setWithdrawDialog(acc)}
+                >
+                  <ArrowUpFromLine className="h-3.5 w-3.5 me-1" />
+                  {t("withdraw")}
+                </Button>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {/* Withdraw dialog */}
+      {withdrawDialog && (
+        <WithdrawDialog
+          account={withdrawDialog}
+          onClose={() => setWithdrawDialog(null)}
+          onSuccess={() => {
+            invalidate(["/api/accounts", "/api/dashboard"]);
+            setWithdrawDialog(null);
+          }}
+        />
+      )}
 
       {/* All transactions table */}
       <Card>
@@ -251,5 +280,161 @@ export function AccountsView() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ─── Withdraw Dialog ──────────────────────────────────────────
+function WithdrawDialog({ account, onClose, onSuccess }: { account: any; onClose: () => void; onSuccess: () => void }) {
+  const { t, lang } = useT();
+  const { toastSuccess, toastError } = useApiMutation();
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("catCashOut");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const money = (n: number) => formatMoney(n, "OMR", lang);
+  const amt = Number(amount) || 0;
+  const currentBalance = account.net;
+  const newBalance = currentBalance - amt;
+  const accountLabel = t(`account${account.method.charAt(0).toUpperCase() + account.method.slice(1)}`);
+
+  const submit = async () => {
+    if (!amount || amt <= 0) return toastError(t("required"));
+    setSaving(true);
+    try {
+      const res = await fetch("/api/accounts/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: account.method,
+          amount: amt,
+          category: t(category),
+          description: description || t(category),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "insufficientBalance") {
+          toastError(t("insufficientBalance"));
+        } else {
+          toastError(data.error || "Error");
+        }
+        return;
+      }
+      toastSuccess(t("withdrawSuccess"));
+      onSuccess();
+    } catch {
+      toastError("Error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const categories = ["catCashOut", "catBankDeposit", "catOwnerWithdrawal", "catTransfer", "catExpensePayment"];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArrowUpFromLine className="h-5 w-5 text-red-500" />
+            {t("withdrawFromAccount")}
+          </DialogTitle>
+          <DialogDescription>
+            {accountLabel} — {t("withdrawDesc")}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Current balance display */}
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("currentBalance")}</p>
+                <p className={`text-2xl font-bold tnum ${currentBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {money(currentBalance)}
+                </p>
+              </div>
+              <div className="text-end">
+                <p className="text-xs text-muted-foreground">{t("newBalance")}</p>
+                <p className={`text-2xl font-bold tnum ${newBalance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {money(newBalance)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Amount input + quick buttons */}
+          <div className="space-y-1.5">
+            <Label htmlFor="withdraw-amount" className="text-xs">{t("withdrawAmount")} *</Label>
+            <div className="relative">
+              <Input
+                id="withdraw-amount"
+                type="number"
+                step="0.001"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.000"
+                className="text-end text-lg font-bold tnum pe-12"
+                autoFocus
+              />
+              <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">OMR</span>
+            </div>
+            <div className="flex gap-1">
+              {[0.25, 0.5, 0.75, 1].map((pct) => (
+                <Button
+                  key={pct}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-xs tnum"
+                  onClick={() => setAmount(String(Math.round(currentBalance * pct * 1000) / 1000))}
+                >
+                  {pct === 1 ? t("all") || "All" : `${pct * 100}%`}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("withdrawCategory")}</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>{t(c)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Description */}
+          <div className="space-y-1.5">
+            <Label htmlFor="withdraw-reason" className="text-xs">{t("withdrawReason")}</Label>
+            <Textarea
+              id="withdraw-reason"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t("withdrawReason")}
+              rows={2}
+            />
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
+            <Button
+              onClick={submit}
+              disabled={saving || amt <= 0 || amt > currentBalance}
+              variant="destructive"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}
+              {t("withdraw")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
