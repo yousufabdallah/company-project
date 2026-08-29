@@ -2,6 +2,7 @@
 
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/format";
+import { useApi } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Wrench, Globe, Moon, Sun, Check, ArrowLeft, ArrowRight, ShoppingCart, Receipt, Users, Car, BarChart3, Building2, ShieldCheck, Zap, Star } from "lucide-react";
@@ -12,6 +13,7 @@ export function LandingScreen() {
   const { t, lang } = useT();
   const setScreen = useApp((s) => s.setScreen);
   const toggleLang = useApp((s) => s.toggleLang);
+  const { data: plansData } = useApi<any>("/api/plans");
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -29,26 +31,29 @@ export function LandingScreen() {
     { icon: Building2, title: t("featureMultiTenant"), desc: t("featureMultiTenantDesc") },
   ];
 
-  const plans = [
-    {
-      name: t("planBasic"),
-      price: t("planBasicPrice"),
-      popular: false,
-      features: [t("planBasicFeat1"), t("planBasicFeat2"), t("planBasicFeat3"), t("planBasicFeat4")],
-    },
-    {
-      name: t("planProfessional"),
-      price: t("planProfessionalPrice"),
-      popular: true,
-      features: [t("planProFeat1"), t("planProFeat2"), t("planProFeat3"), t("planProFeat4")],
-    },
-    {
-      name: t("planEnterprise"),
-      price: t("planEnterprisePrice"),
-      popular: false,
-      features: [t("planEntFeat1"), t("planEntFeat2"), t("planEntFeat3"), t("planEntFeat4")],
-    },
-  ];
+  // Dynamic plans from the database (super admin edits reflect here)
+  const planItems = (plansData?.items || []) as any[];
+  const plans =
+    planItems.length > 0
+      ? planItems.map((p, i) => ({
+          name: p.name as string,
+          description: (p.description || "") as string,
+          price: p.price as number,
+          popular:
+            p.name?.toLowerCase() === "professional" ||
+            (planItems.length >= 3 && i === 1 && !planItems.some((x) => x.name?.toLowerCase() === "professional")),
+          features: (p.features || []) as string[],
+        }))
+      : [
+          // Fallback (before API responds / if DB empty) — matches seeded defaults
+          { name: t("planBasic"), description: "", price: 29, popular: false, features: [t("planBasicFeat1"), t("planBasicFeat2"), t("planBasicFeat3"), t("planBasicFeat4")] },
+          { name: t("planProfessional"), description: "", price: 79, popular: true, features: [t("planProFeat1"), t("planProFeat2"), t("planProFeat3"), t("planProFeat4")] },
+          { name: t("planEnterprise"), description: "", price: 199, popular: false, features: [t("planEntFeat1"), t("planEntFeat2"), t("planEntFeat3"), t("planEntFeat4")] },
+        ];
+
+  const planCurrency = plansData?.currency || "OMR";
+  const planPriceLabel = (p: number) =>
+    `${p % 1 === 0 ? p : p.toFixed(3)} ${planCurrency}${t("perMonth")}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -139,16 +144,17 @@ export function LandingScreen() {
           </div>
           <div className="mt-10 grid gap-5 lg:grid-cols-3">
             {plans.map((p) => (
-              <Card key={p.name} className={`relative ${p.popular ? "border-primary shadow-lg ring-1 ring-primary/20" : ""}`}>
+              <Card key={p.name} className={`relative flex flex-col ${p.popular ? "border-primary shadow-lg ring-1 ring-primary/20" : ""}`}>
                 {p.popular && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">
                     {t("popular")}
                   </span>
                 )}
-                <CardContent className="p-6">
+                <CardContent className="flex flex-1 flex-col p-6">
                   <h3 className="text-lg font-bold">{p.name}</h3>
-                  <p className="mt-2 text-3xl font-bold tnum">{p.price}</p>
-                  <ul className="mt-5 space-y-2">
+                  {p.description && <p className="mt-0.5 text-xs text-muted-foreground">{p.description}</p>}
+                  <p className="mt-2 text-3xl font-bold tnum">{planPriceLabel(p.price)}</p>
+                  <ul className="mt-5 flex-1 space-y-2">
                     {p.features.map((feat, i) => (
                       <li key={i} className="flex items-center gap-2 text-sm">
                         <Check className="h-4 w-4 shrink-0 text-emerald-500" />
