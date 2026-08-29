@@ -126,67 +126,121 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border p-4 print-area">
-        {/* Print header */}
-        <div className="flex items-start justify-between gap-4 border-b pb-3">
-          <div>
-            <h2 className="text-lg font-bold">{tn.name || t("appName")}</h2>
-            <p className="text-xs text-muted-foreground">{tn.address}</p>
-            <p className="text-xs text-muted-foreground">{t("phone")}: {tn.phone} · {t("email")}: {tn.email}</p>
-            <p className="text-xs text-muted-foreground">{t("taxNumber")}: {tn.taxNumber}</p>
+      <div className="rounded-lg border bg-white p-6 sm:p-8 print-area text-slate-900 shadow-sm">
+        {/* ─── Premium header: logo + workshop info (left) ─ invoice title (right) ─── */}
+        <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4">
+          <div className="flex items-start gap-3">
+            {tn.logo ? (
+              <img src={tn.logo} alt={tn.name} className="h-14 w-14 shrink-0 rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Receipt className="h-7 w-7" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-lg font-bold leading-tight text-slate-900">{tn.name || t("appName")}</h2>
+              {tn.address && <p className="mt-0.5 text-[11px] text-slate-600">{tn.address}</p>}
+              <p className="text-[11px] text-slate-600">
+                {tn.phone && <span>{t("phone")}: {tn.phone}</span>}
+                {tn.email && <span className="mx-1">·</span>}
+                {tn.email && <span>{tn.email}</span>}
+              </p>
+              {tn.taxNumber && <p className="text-[11px] text-slate-600">{t("taxNumber")}: {tn.taxNumber}</p>}
+              {tn.crNumber && <p className="text-[11px] text-slate-600">{t("crNumber")}: {tn.crNumber}</p>}
+            </div>
           </div>
           <div className="text-end">
-            <h3 className="text-base font-bold uppercase">{t("invoices")}</h3>
-            <p className="font-mono text-sm font-bold tnum">{inv.code}</p>
-            <p className="text-xs text-muted-foreground">{formatDate(inv.date, lang)}</p>
+            <h3 className="text-xl font-bold uppercase tracking-wide text-slate-900">{t("invoices")}</h3>
+            <p className="mt-1 inline-block rounded bg-slate-900 px-2 py-0.5 font-mono text-sm font-bold text-white tnum">{inv.code}</p>
+            <p className="mt-1 text-xs text-slate-600">{formatDate(inv.date, lang)}</p>
+            <div className="mt-2">
+              <StatusBadge status={inv.status} />
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 py-3 text-xs">
-          <div>
-            <p className="font-semibold text-muted-foreground">{t("customer")}</p>
-            <p className="text-sm font-medium">{inv.customer?.name}</p>
-            <p className="text-muted-foreground">{inv.customer?.mobile}</p>
+        {/* ─── Bill To section ─── */}
+        <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t("customer")}</p>
+            <p className="mt-1 text-sm font-bold text-slate-900">{inv.customer?.name}</p>
+            <p className="text-xs text-slate-600">{inv.customer?.mobile}</p>
+            {inv.customer?.email && <p className="text-xs text-slate-600">{inv.customer.email}</p>}
           </div>
-          <div>
-            <p className="font-semibold text-muted-foreground">{t("vehicle")}</p>
-            <p className="text-sm font-medium">{inv.vehicle?.plateNumber} · {inv.vehicle?.make} {inv.vehicle?.model}</p>
+          <div className="rounded-lg bg-slate-50 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t("vehicle")}</p>
+            <p className="mt-1 text-sm font-bold text-slate-900">{inv.vehicle?.plateNumber} · {inv.vehicle?.make} {inv.vehicle?.model}</p>
+            {inv.vehicle?.year && <p className="text-xs text-slate-600">{t("year")}: {inv.vehicle.year}</p>}
+            {inv.jobCard?.code && <p className="text-xs text-slate-600">{t("jobCardNumber")}: <span className="font-mono">{inv.jobCard.code}</span></p>}
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded border">
-          <Table>
-            <TableHeader><TableRow><TableHead className="text-xs">{t("description")}</TableHead><TableHead className="text-xs text-end">{t("quantity")}</TableHead><TableHead className="text-xs text-end">{t("unitPrice")}</TableHead><TableHead className="text-xs text-end">{t("total")}</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {inv.items?.map((i: any) => (
-                <TableRow key={i.id}>
-                  <TableCell className="text-xs font-medium">{i.name}</TableCell>
-                  <TableCell className="text-xs text-end tnum">{i.quantity}</TableCell>
-                  <TableCell className="text-xs text-end tnum">{money(i.unitPrice)}</TableCell>
-                  <TableCell className="text-xs text-end tnum font-medium">{money(i.total)}</TableCell>
-                </TableRow>
+        {/* ─── Items table ─── */}
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-900 text-white">
+                <th className="px-3 py-2 text-start font-semibold">#</th>
+                <th className="px-3 py-2 text-start font-semibold">{t("description")}</th>
+                <th className="px-3 py-2 text-center font-semibold">{t("quantity")}</th>
+                <th className="px-3 py-2 text-end font-semibold">{t("unitPrice")}</th>
+                <th className="px-3 py-2 text-end font-semibold">{t("total")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inv.items?.map((i: any, idx: number) => (
+                <tr key={i.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2 text-slate-500 tnum">{idx + 1}</td>
+                  <td className="px-3 py-2 font-medium text-slate-900">{i.name}</td>
+                  <td className="px-3 py-2 text-center tnum text-slate-700">{i.quantity}</td>
+                  <td className="px-3 py-2 text-end tnum text-slate-700">{money(i.unitPrice)}</td>
+                  <td className="px-3 py-2 text-end tnum font-semibold text-slate-900">{money(i.total)}</td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
 
-        <div className="ms-auto mt-3 w-full max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between text-muted-foreground"><span>{t("laborTotal")}</span><span className="tnum">{money(inv.laborTotal)}</span></div>
-          <div className="flex justify-between text-muted-foreground"><span>{t("partsTotal")}</span><span className="tnum">{money(inv.partsTotal)}</span></div>
-          {inv.discount > 0 && <div className="flex justify-between text-muted-foreground"><span>{t("discount")}</span><span className="tnum">- {money(inv.discount)}</span></div>}
-          <div className="flex justify-between text-muted-foreground"><span>{t("tax")} ({tn.taxPercent}%)</span><span className="tnum">{money(inv.tax)}</span></div>
-          <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(inv.grandTotal)}</span></div>
-          <div className="flex justify-between text-emerald-600"><span>{t("paid")}</span><span className="tnum">{money(inv.paidAmount)}</span></div>
-          {remaining > 0 && <div className="flex justify-between text-red-600 font-semibold"><span>{t("remaining")}</span><span className="tnum">{money(remaining)}</span></div>}
+        {/* ─── Totals + stamp ─── */}
+        <div className="mt-4 flex items-start justify-between gap-4">
+          <div className="flex-1">
+            {/* Stamp */}
+            {tn.stamp ? (
+              <div className="flex flex-col items-center opacity-90">
+                <img src={tn.stamp} alt="Stamp" className="h-28 w-28 object-contain rotate-[-8deg]" />
+                <p className="mt-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400">{t("workshopStamp")}</p>
+              </div>
+            ) : (
+              /* Signature area when no stamp */
+              <div className="mt-8 max-w-[200px]">
+                <div className="border-t border-slate-400 pt-1">
+                  <p className="text-[10px] text-slate-500">{t("workshopName")}</p>
+                  <p className="text-[10px] text-slate-400">{t("signature") || "Authorized Signature"}</p>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="w-full max-w-xs space-y-1.5 text-sm">
+            <div className="flex justify-between text-slate-600"><span>{t("laborTotal")}</span><span className="tnum">{money(inv.laborTotal)}</span></div>
+            <div className="flex justify-between text-slate-600"><span>{t("partsTotal")}</span><span className="tnum">{money(inv.partsTotal)}</span></div>
+            {inv.discount > 0 && <div className="flex justify-between text-slate-600"><span>{t("discount")}</span><span className="tnum">- {money(inv.discount)}</span></div>}
+            <div className="flex justify-between text-slate-600"><span>{t("tax")} ({tn.taxPercent}%)</span><span className="tnum">{money(inv.tax)}</span></div>
+            <div className="flex justify-between rounded bg-slate-900 px-2 py-1.5 text-base font-bold text-white">
+              <span>{t("grandTotal")}</span><span className="tnum">{money(inv.grandTotal)}</span>
+            </div>
+            <div className="flex justify-between text-emerald-600"><span>{t("paid")}</span><span className="tnum">{money(inv.paidAmount)}</span></div>
+            {remaining > 0 && <div className="flex justify-between rounded bg-red-50 px-2 py-1 font-semibold text-red-600"><span>{t("remaining")}</span><span className="tnum">{money(remaining)}</span></div>}
+          </div>
         </div>
 
+        {/* ─── Terms + footer ─── */}
         {tn.terms && (
-          <div className="mt-4 border-t pt-3">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">{t("termsConditions")}</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">{tn.terms}</p>
+          <div className="mt-6 border-t border-slate-200 pt-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{t("termsConditions")}</p>
+            <p className="mt-1 whitespace-pre-line text-[10px] text-slate-600">{tn.terms}</p>
           </div>
         )}
-        {tn.invoiceFooter && <p className="mt-2 text-center text-[10px] text-muted-foreground">{tn.invoiceFooter}</p>}
+        {tn.invoiceFooter && <p className="mt-3 text-center text-[10px] italic text-slate-500">{tn.invoiceFooter}</p>}
       </div>
 
       {/* Payment actions */}

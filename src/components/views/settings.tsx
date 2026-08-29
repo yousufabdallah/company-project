@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useEffect, useState } from "react";
-import { Settings2, Save, Globe } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Settings2, Save, Globe, Image as ImageIcon, Upload, X, Stamp } from "lucide-react";
 import { useApp } from "@/lib/store";
 
 export function SettingsView() {
@@ -46,6 +46,33 @@ export function SettingsView() {
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-3">
+        {/* Branding: logo + stamp */}
+        <Card className="lg:col-span-1">
+          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ImageIcon className="h-4 w-4" />{t("branding")}</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <BrandingUploader
+              type="logo"
+              label={t("workshopLogo")}
+              hint={t("logoHint")}
+              uploadLabel={t("uploadLogo")}
+              removeLabel={t("removeLogo")}
+              value={form.logo}
+              onChange={(url) => { update("logo", url); }}
+              onUploaded={() => { invalidate(["/api/settings", "/api/dashboard"]); toastSuccess(t("logoUploaded")); }}
+            />
+            <BrandingUploader
+              type="stamp"
+              label={t("workshopStamp")}
+              hint={t("stampHint")}
+              uploadLabel={t("uploadStamp")}
+              removeLabel={t("removeStamp")}
+              value={form.stamp}
+              onChange={(url) => { update("stamp", url); }}
+              onUploaded={() => { invalidate(["/api/settings", "/api/dashboard"]); toastSuccess(t("stampUploaded")); }}
+            />
+          </CardContent>
+        </Card>
+
         {/* Workshop info */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Settings2 className="h-4 w-4" />{t("workshopInfo")}</CardTitle></CardHeader>
@@ -120,6 +147,118 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+// ─── Branding uploader (logo / stamp) ──────────────────────────
+function BrandingUploader({
+  type,
+  label,
+  hint,
+  uploadLabel,
+  removeLabel,
+  value,
+  onChange,
+  onUploaded,
+}: {
+  type: "logo" | "stamp";
+  label: string;
+  hint: string;
+  uploadLabel: string;
+  removeLabel: string;
+  value?: string | null;
+  onChange: (url: string | null) => void;
+  onUploaded: () => void;
+}) {
+  const { t } = useT();
+  const { toastError } = useApiMutation();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const onFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", type);
+      const res = await fetch("/api/settings/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error || "Error");
+        return;
+      }
+      onChange(data.url);
+      onUploaded();
+    } catch {
+      toastError("Error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = async () => {
+    onChange(null);
+    // Persist removal via settings PUT is handled by the Save button, but also clear immediately
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [type === "logo" ? "logo" : "stamp"]: null }),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const isLogo = type === "logo";
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <div className="rounded-lg border p-3">
+        {value ? (
+          <div className="flex items-center gap-3">
+            <div className={`flex shrink-0 items-center justify-center rounded bg-muted/50 ${isLogo ? "h-16 w-16" : "h-20 w-20"}`}>
+              <img src={value} alt={label} className={isLogo ? "max-h-14 max-w-14 object-contain" : "max-h-18 max-w-18 object-contain opacity-90"} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs text-muted-foreground font-mono">{value}</p>
+              <div className="mt-1.5 flex gap-1.5">
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={uploading} onClick={() => inputRef.current?.click()}>
+                  <Upload className="h-3 w-3 me-1" />{uploading ? t("uploading") : t("uploadLogo")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={remove}>
+                  <X className="h-3 w-3 me-1" />{removeLabel}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed py-6 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+          >
+            {isLogo ? <ImageIcon className="h-6 w-6" /> : <Stamp className="h-6 w-6" />}
+            <span className="text-xs">{uploading ? t("uploading") : uploadLabel}</span>
+            <span className="text-[10px] text-muted-foreground/80">{isLogo ? "PNG / JPG / SVG" : "PNG"}</span>
+          </button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,image/gif"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFile(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground">{hint}</p>
     </div>
   );
 }

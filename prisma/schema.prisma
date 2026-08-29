@@ -16,6 +16,7 @@ model Tenant {
   id              String   @id @default(cuid())
   name            String
   logo            String?
+  stamp           String?
   address         String?
   phone           String?
   whatsapp        String?
