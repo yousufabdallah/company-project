@@ -29,8 +29,11 @@ export interface AuthUser {
   name: string;
   email: string;
   role: "owner" | "manager" | "advisor" | "technician" | "accountant" | "inventory" | "super_admin";
-  tenantName?: string;
+  tenantId?: string | null;
+  tenantName?: string | null;
 }
+
+const PLATFORM_TENANT = "Platform Administration";
 
 interface AppState {
   lang: Lang;
@@ -42,6 +45,7 @@ interface AppState {
   user: AuthUser | null;
   login: (u: AuthUser) => void;
   logout: () => void;
+  setUser: (u: AuthUser) => void;
   // workshop app view
   view: ViewKey;
   setView: (v: ViewKey) => void;
@@ -61,8 +65,15 @@ export const useApp = create<AppState>((set, get) => ({
   screen: "landing",
   setScreen: (s) => set({ screen: s }),
   user: null,
-  login: (u) => set({ user: u, screen: u.role === "super_admin" ? "superadmin" : "app" }),
+  // Super admin impersonating a workshop (tenantName set, not platform) → workshop app;
+  // Super admin on the platform → super admin panel; everyone else → workshop app.
+  login: (u) =>
+    set({
+      user: u,
+      screen: u.role === "super_admin" ? (u.tenantName && u.tenantName !== PLATFORM_TENANT ? "app" : "superadmin") : "app",
+    }),
   logout: () => set({ user: null, screen: "landing", view: "dashboard" }),
+  setUser: (u) => set({ user: u }),
   view: "dashboard",
   setView: (v) => set({ view: v, focusId: null }),
   sidebarOpen: false,

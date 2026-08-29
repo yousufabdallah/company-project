@@ -20,3 +20,22 @@ Stage Summary:
 - Multi-tenant-ready data model, RBAC roles seeded, full workshop workflow: Customer → Vehicle → Inspection → Estimate → Job Card → Technician → Parts → Invoice → Payment → Delivery.
 - Bilingual AR/EN, dark/light, responsive with sticky footer, print-ready invoices/job cards.
 - All modules verified interactive in the browser.
+
+---
+Task ID: 15-21
+Agent: main (Z.ai Code)
+Task: Super Admin settings page, subscriptions & plans management, and workshop impersonation
+
+Work Log:
+- Added Plan + PlatformSetting Prisma models; Tenant got planId/planRecord + subscriptionStatus + subscriptionExpiry. Pushed non-destructively.
+- Critical fix: getTenantId/getTenant in src/lib/api.ts now resolve the tenant from the authenticated session (supports impersonation); fallback = first non-platform tenant with users. This fixed a latent bug where backdated demo tenants would hijack the default tenant.
+- New APIs (all super-admin-guarded): /api/super-admin/plans (GET lazy-seeds Basic/Professional/Enterprise, POST/PATCH/DELETE soft-deactivate), /api/super-admin/settings (GET/PUT key-value platform settings), extended /api/super-admin/tenants/[id] PATCH for plan + subscription status/expiry, /api/super-admin/tenants/[id]/impersonate (session scoped to target tenant), /api/auth/impersonate-exit (restores platform session).
+- Store: added setUser; login() now routes super_admin to "app" screen when tenantName is a real workshop (impersonation) vs "superadmin" for the platform.
+- Rebuilt SuperAdminScreen with 4 tabs: Overview (KPIs/charts), Tenants (table + subscription column + expiry + Enter Workshop/Manage/Suspend actions + subscription dialog with +30/90/365d renew), Plans (cards + full CRUD dialog with limits -1=∞ and features), Platform Settings (name/support email/trial days/currency/maintenance mode).
+- AppShell: impersonation banner "You are viewing [Workshop]" + Exit to Super Admin button.
+- i18n: ~35 new keys in AR/EN; added past_due badge color, status_active/status_past_due labels.
+- Verified end-to-end via API tests and agent-browser: plans CRUD (create/update/deactivate), tenant subscription update, impersonate Al-Manara → workshop dashboard shows that tenant's data + banner, exit → back to Super Admin Panel; session hydration restores impersonated state on reload; no console errors.
+
+Stage Summary:
+- Super admin now has: platform settings, plans management (3 default plans seeded lazily), per-tenant subscription control (plan/status/expiry with quick renew), and one-click workshop impersonation with a clear banner + exit.
+- Multi-tenancy data isolation now actually enforced via session tenantId on every workshop API.

@@ -32,6 +32,10 @@ model Tenant {
   terms           String?
   status          String   @default("active") // active | suspended | trial
   plan            String   @default("Professional")
+  planId          String?
+  planRecord      Plan?    @relation(fields: [planId], references: [id])
+  subscriptionStatus  String   @default("trial") // trial | active | past_due | cancelled
+  subscriptionExpiry  DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -544,4 +548,30 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+// ─── SaaS Plans & Platform Settings ───────────────────────────────────
+
+model Plan {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  price       Float    @default(0) // OMR / month
+  maxBranches Int      @default(1) // -1 = unlimited
+  maxUsers    Int      @default(3) // -1 = unlimited
+  maxJobCards Int      @default(500) // per month, -1 = unlimited
+  features    String   @default("[]") // JSON array of feature strings
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenants Tenant[]
+}
+
+model PlatformSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
 }

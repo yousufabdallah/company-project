@@ -58,6 +58,7 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { users: true, customers: true, jobCards: true, invoices: true, vehicles: true } },
+      planRecord: { select: { id: true, name: true, price: true } },
     },
   });
 
@@ -66,10 +67,14 @@ export async function GET() {
   const trial = tenants.filter((t) => t.status === "trial").length;
   const suspended = tenants.filter((t) => t.status === "suspended").length;
 
+  // Plan prices from the Plan table (fallback to defaults)
+  const planRows = await db.plan.findMany({ select: { name: true, price: true } });
+  const priceByName = new Map(planRows.map((p) => [p.name, p.price]));
+
   // MRR = sum of active plan prices
   const mrr = tenants
     .filter((t) => t.status === "active")
-    .reduce((sum, t) => sum + (PLAN_PRICES[t.plan] ?? 0), 0);
+    .reduce((sum, t) => sum + (priceByName.get(t.plan) ?? PLAN_PRICES[t.plan] ?? 0), 0);
 
   // New registrations this month
   const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -121,8 +126,12 @@ export async function GET() {
       email: t.email,
       phone: t.phone,
       plan: t.plan,
+      planId: t.planId,
+      planPrice: t.planRecord?.price ?? null,
+      subscriptionStatus: t.subscriptionStatus,
+      subscriptionExpiry: t.subscriptionExpiry,
       status: t.status,
-      mrr: t.status === "active" ? (PLAN_PRICES[t.plan] ?? 0) : 0,
+      mrr: t.status === "active" ? (priceByName.get(t.plan) ?? PLAN_PRICES[t.plan] ?? 0) : 0,
       users: t._count?.users ?? 0,
       customers: t._count?.customers ?? 0,
       jobCards: t._count?.jobCards ?? 0,
