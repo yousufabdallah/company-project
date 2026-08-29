@@ -22,15 +22,31 @@ export type ViewKey =
   | "auditLogs"
   | "settings";
 
+// Top-level screen router (public vs authenticated)
+export type Screen = "landing" | "login" | "app" | "superadmin";
+
+export interface AuthUser {
+  name: string;
+  email: string;
+  role: "owner" | "manager" | "advisor" | "technician" | "accountant" | "inventory" | "super_admin";
+  tenantName?: string;
+}
+
 interface AppState {
   lang: Lang;
   setLang: (l: Lang) => void;
   toggleLang: () => void;
+  // top-level screen
+  screen: Screen;
+  setScreen: (s: Screen) => void;
+  user: AuthUser | null;
+  login: (u: AuthUser) => void;
+  logout: () => void;
+  // workshop app view
   view: ViewKey;
   setView: (v: ViewKey) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (o: boolean) => void;
-  // optional focus record (e.g. open a customer detail)
   focusId: string | null;
   setFocusId: (id: string | null) => void;
   // quick create dialog
@@ -42,6 +58,11 @@ export const useApp = create<AppState>((set, get) => ({
   lang: "en",
   setLang: (l) => set({ lang: l }),
   toggleLang: () => set({ lang: get().lang === "en" ? "ar" : "en" }),
+  screen: "landing",
+  setScreen: (s) => set({ screen: s }),
+  user: null,
+  login: (u) => set({ user: u, screen: u.role === "super_admin" ? "superadmin" : "app" }),
+  logout: () => set({ user: null, screen: "landing", view: "dashboard" }),
   view: "dashboard",
   setView: (v) => set({ view: v, focusId: null }),
   sidebarOpen: false,

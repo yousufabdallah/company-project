@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { SidebarContent } from "@/components/shell/sidebar";
-import { Menu, Search, Sun, Moon, Globe, Bell, User, Plus } from "lucide-react";
+import { Menu, Search, Sun, Moon, Globe, Bell, User, Plus, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useApi } from "@/components/shared";
 import { useEffect, useState } from "react";
@@ -19,6 +19,8 @@ export function Topbar() {
   const setQuickCreate = useApp((s) => s.setQuickCreate);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const setSidebarOpen = useApp((s) => s.setSidebarOpen);
+  const user = useApp((s) => s.user);
+  const logout = useApp((s) => s.logout);
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -149,20 +151,25 @@ export function Topbar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                <User className="h-4 w-4" />
+                {user?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || <User className="h-4 w-4" />}
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div>
-                <p className="text-sm font-medium">Khalid Al-Rashidi</p>
-                <p className="text-xs text-muted-foreground">Workshop Owner</p>
+                <p className="text-sm font-medium">{user?.name || "User"}</p>
+                <p className="text-xs text-muted-foreground capitalize">{user?.role.replace("_", " ")}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setView("settings")}>{t("settings")}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setView("auditLogs")}>{t("auditLogs")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={logout}>
+              <LogOut className="h-4 w-4 me-2" />
+              {t("backToHome")}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
