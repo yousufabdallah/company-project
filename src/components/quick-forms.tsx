@@ -266,9 +266,22 @@ export function QuickPaymentForm({ onDone }: { onDone: () => void }) {
         if (!form.customerId || !form.amount) return toastError(t("required"));
         setSaving(true);
         try {
-          await submit("/api/payments", { ...form, amount: Number(form.amount) });
-          invalidate(["/api/payments", "/api/invoices", "/api/customers", "/api/dashboard"]);
-          toastSuccess();
+          const res = await fetch("/api/payments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...form, amount: Number(form.amount) }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            toastError(data.error || "Error");
+            return;
+          }
+          invalidate(["/api/payments", "/api/invoices", "/api/customers", "/api/dashboard", "/api/accounts"]);
+          if (data.changeDue && data.changeDue > 0) {
+            toastSuccess(`${t("change")}: ${data.changeDue} OMR`);
+          } else {
+            toastSuccess();
+          }
           onDone();
         } catch {
           toastError("Error");

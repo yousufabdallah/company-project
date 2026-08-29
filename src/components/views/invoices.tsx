@@ -114,9 +114,23 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
   const pay = async () => {
     if (!payAmt) return toastError(t("required"));
     try {
-      await fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: inv.id, customerId: inv.customerId, amount: Number(payAmt), method: payMethod }) });
-      invalidate(["/api/payments", "/api/invoices", "/api/customers", "/api/dashboard"]);
-      toastSuccess();
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: inv.id, customerId: inv.customerId, amount: Number(payAmt), method: payMethod }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toastError(data.error || "Error");
+        return;
+      }
+      // If customer overpaid, show change due message
+      if (data.changeDue && data.changeDue > 0) {
+        toastSuccess(`${t("paid")}: ${money(data.effectiveAmount)} | ${t("change")}: ${money(data.changeDue)}`);
+      } else {
+        toastSuccess();
+      }
+      invalidate(["/api/payments", "/api/invoices", "/api/customers", "/api/dashboard", "/api/accounts"]);
       setPayOpen(false); setPayAmt("");
       onClose();
     } catch {
