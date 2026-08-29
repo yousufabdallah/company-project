@@ -24,6 +24,7 @@ import { ExpensesView } from "@/components/views/expenses";
 import { WarrantiesView } from "@/components/views/warranties";
 import { ReportsView } from "@/components/views/reports";
 import { TechniciansView } from "@/components/views/technicians";
+import { UsersView } from "@/components/views/users";
 import { AuditLogsView } from "@/components/views/audit-logs";
 import { SettingsView } from "@/components/views/settings";
 import { useT } from "@/lib/format";
@@ -86,6 +87,7 @@ export function AppShell() {
               {view === "warranties" && <WarrantiesView />}
               {view === "reports" && <ReportsView />}
               {view === "technicians" && <TechniciansView />}
+              {view === "users" && <UsersView />}
               {view === "auditLogs" && <AuditLogsView />}
               {view === "settings" && <SettingsView />}
             </div>

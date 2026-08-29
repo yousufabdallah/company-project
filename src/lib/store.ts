@@ -9,6 +9,7 @@ export type ViewKey =
   | "estimates"
   | "jobCards"
   | "technicians"
+  | "users"
   | "services"
   | "inventory"
   | "pos"

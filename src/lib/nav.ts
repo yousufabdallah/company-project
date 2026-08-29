@@ -18,6 +18,7 @@ import {
   ScrollText,
   ScanLine,
   Landmark,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import type { ViewKey } from "@/lib/store";
@@ -72,6 +73,7 @@ export const NAV: NavGroup[] = [
     titleKey: "groupSystem",
     items: [
       { key: "technicians", labelKey: "technicians", icon: UserCog },
+      { key: "users", labelKey: "users", icon: UsersRound },
       { key: "auditLogs", labelKey: "auditLogs", icon: ScrollText },
       { key: "settings", labelKey: "settings", icon: Settings2 },
     ],
