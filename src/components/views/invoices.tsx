@@ -244,7 +244,7 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
         <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4">
           <div className="flex items-start gap-3">
             {tn.logo ? (
-              <img src={tn.logo} alt={tn.name} className="h-14 w-14 shrink-0 rounded-lg object-contain" />
+              <img src={tn.logo + "?t=" + Date.now()} alt={tn.name} className="h-14 w-14 shrink-0 rounded-lg object-contain" key={tn.logo} />
             ) : (
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
                 <Receipt className="h-7 w-7" />
@@ -320,7 +320,7 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
             {/* Stamp */}
             {tn.stamp ? (
               <div className="flex flex-col items-center opacity-90">
-                <img src={tn.stamp} alt="Stamp" className="h-28 w-28 object-contain rotate-[-8deg]" />
+                <img src={tn.stamp + "?t=" + Date.now()} alt="Stamp" className="h-28 w-28 object-contain rotate-[-8deg]" key={tn.stamp} />
                 <p className="mt-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400">{t("workshopStamp")}</p>
               </div>
             ) : (
