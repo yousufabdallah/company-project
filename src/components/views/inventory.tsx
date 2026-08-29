@@ -1,22 +1,28 @@
 "use client";
 
 import { useT, formatMoney, formatNumber } from "@/lib/format";
-import { useApi, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
+import { useApi, useApiMutation, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApp } from "@/lib/store";
 import { useState } from "react";
-import { Package, Search, Plus, AlertTriangle, PackageSearch } from "lucide-react";
+import { Package, Search, Plus, AlertTriangle, PackageSearch, Pencil, Trash2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export function InventoryView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/parts");
   const setQuickCreate = useApp((s) => s.setQuickCreate);
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
+  const [editing, setEditing] = useState<any>(null);
   const money = (n: number) => formatMoney(n, "OMR", lang);
 
   const all = data?.items || [];
@@ -33,7 +39,7 @@ export function InventoryView() {
   return (
     <div>
       <PageHeader title={t("inventory")} subtitle={`${all.length} ${t("inventory").toLowerCase()} · ${t("stockValue")}: ${money(stockValue)}`}>
-        <Button size="sm" onClick={() => setQuickCreate("part")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {canCreate("inventory") && <Button size="sm" onClick={() => setQuickCreate("part")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>}
       </PageHeader>
 
       {lowCount > 0 && (
@@ -73,6 +79,7 @@ export function InventoryView() {
                     <TableHead className="text-end">{t("stockQty")}</TableHead>
                     <TableHead className="text-end hidden lg:table-cell">{t("costPrice")}</TableHead>
                     <TableHead className="text-end">{t("sellingPrice")}</TableHead>
+                    {(canEdit("inventory") || canDelete("inventory")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -80,7 +87,7 @@ export function InventoryView() {
                     const low = p.quantity <= p.minStock;
                     const out = p.quantity === 0;
                     return (
-                      <TableRow key={p.id}>
+                      <TableRow key={p.id} className="hover:bg-muted/50">
                         <TableCell className="font-mono text-xs tnum">{p.sku}</TableCell>
                         <TableCell>
                           <p className="text-sm font-medium">{p.name}</p>
@@ -95,6 +102,34 @@ export function InventoryView() {
                         </TableCell>
                         <TableCell className="text-end hidden lg:table-cell tnum text-muted-foreground">{money(p.costPrice)}</TableCell>
                         <TableCell className="text-end tnum font-medium">{money(p.sellingPrice)}</TableCell>
+                        {(canEdit("inventory") || canDelete("inventory")) && (
+                          <TableCell className="text-end">
+                            <div className="flex items-center justify-end gap-1">
+                              {canEdit("inventory") && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(p)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {canDelete("inventory") && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={async () => {
+                                  if (!confirm(t("confirmDelete"))) return;
+                                  try {
+                                    const res = await fetch(`/api/parts?id=${p.id}`, { method: "DELETE" });
+                                    if (!res.ok) {
+                                      const err = await res.json();
+                                      toastError(err.error === "part_in_use" ? `${t("inventory")} used in ${err.count} job cards` : "Error");
+                                      return;
+                                    }
+                                    toastSuccess(t("saved"));
+                                    window.location.reload();
+                                  } catch { toastError("Error"); }
+                                }}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
@@ -104,6 +139,165 @@ export function InventoryView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit dialog */}
+      {editing && (
+        <EditPartDialog part={editing} onClose={() => setEditing(null)} />
+      )}
     </div>
+  );
+}
+
+// ─── Edit Part Dialog ──────────────────────────────────────────
+function EditPartDialog({ part, onClose }: { part: any; onClose: () => void }) {
+  const { t, lang } = useT();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const { data: supData } = useApi<any>("/api/suppliers");
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: part.name || "",
+    nameAr: part.nameAr || "",
+    sku: part.sku || "",
+    barcode: part.barcode || "",
+    brand: part.brand || "",
+    supplierId: part.supplierId || "",
+    costPrice: String(part.costPrice ?? 0),
+    sellingPrice: String(part.sellingPrice ?? 0),
+    quantity: String(part.quantity ?? 0),
+    minStock: String(part.minStock ?? 5),
+    location: part.location || "",
+    warrantyMonths: String(part.warrantyMonths ?? 0),
+  });
+
+  const save = async () => {
+    if (!form.name.trim()) return toastError(t("required"));
+    setSaving(true);
+    try {
+      const res = await fetch("/api/parts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: part.id,
+          name: form.name,
+          nameAr: form.nameAr || null,
+          sku: form.sku,
+          barcode: form.barcode || null,
+          brand: form.brand || null,
+          supplierId: form.supplierId || null,
+          costPrice: Number(form.costPrice) || 0,
+          sellingPrice: Number(form.sellingPrice) || 0,
+          quantity: Number(form.quantity) || 0,
+          minStock: Number(form.minStock) || 5,
+          location: form.location || null,
+          warrantyMonths: Number(form.warrantyMonths) || 0,
+        }),
+      });
+      if (!res.ok) {
+        toastError("Error");
+        return;
+      }
+      invalidate(["/api/parts", "/api/dashboard"]);
+      toastSuccess(t("saved"));
+      onClose();
+    } catch {
+      toastError("Error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scroll-thin">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("editPlan") || "Edit"}: {part.name}</DialogTitle>
+          <DialogDescription className="sr-only">{t("inventory")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("name")} *</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("sku")} *</Label>
+              <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">الاسم العربي</Label>
+              <Input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} dir="rtl" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("barcode")}</Label>
+              <Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("brand")}</Label>
+              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("location")}</Label>
+              <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Supplier */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("supplier")}</Label>
+            <Select value={form.supplierId || "none"} onValueChange={(v) => setForm({ ...form, supplierId: v === "none" ? "" : v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— {t("none")} —</SelectItem>
+                {(supData?.items || []).map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Prices + Stock */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("costPrice")}</Label>
+              <Input type="number" step="0.001" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className="tnum" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("sellingPrice")}</Label>
+              <Input type="number" step="0.001" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} className="tnum" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("stockQty")}</Label>
+              <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="tnum" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("minStock")}</Label>
+              <Input type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} className="tnum" />
+            </div>
+          </div>
+
+          {/* Stock change note */}
+          {Number(form.quantity) !== part.quantity && (
+            <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-xs text-sky-700 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300">
+              <Package className="h-3.5 w-3.5 shrink-0" />
+              <span>Stock will change from {part.quantity} to {form.quantity} ({Number(form.quantity) - part.quantity > 0 ? "+" : ""}{Number(form.quantity) - part.quantity}). A stock movement will be recorded.</span>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("warranties")}</Label>
+            <Input type="number" value={form.warrantyMonths} onChange={(e) => setForm({ ...form, warrantyMonths: e.target.value })} className="tnum" />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}
+              {t("save")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

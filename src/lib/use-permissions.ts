@@ -13,8 +13,8 @@ export function usePermissions() {
   const permissions = (user as any)?.permissions || getRoleDefaults(user?.role || "advisor");
 
   const has = (module: string, action: Action): boolean => {
-    // Owner always has full access
-    if (user?.role === "owner") return true;
+    // Owner and super_admin always have full access
+    if (user?.role === "owner" || user?.role === "super_admin") return true;
     return checkPermission(permissions, module, action);
   };
 

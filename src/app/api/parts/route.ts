@@ -48,3 +48,71 @@ export async function POST(req: Request) {
   await db.auditLog.create({ data: { tenantId, action: "created", module: "inventory", record: part.sku } });
   return NextResponse.json(part, { status: 201 });
 }
+
+// PATCH — update an existing part
+export async function PATCH(req: Request) {
+  const tenantId = await getTenantId();
+  const body = await req.json();
+  const { id, ...fields } = body;
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  // Verify ownership
+  const existing = await db.part.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const data: any = {};
+  const allowed = ["sku", "barcode", "name", "nameAr", "categoryId", "brand", "supplierId", "costPrice", "sellingPrice", "quantity", "minStock", "maxStock", "location", "warrantyMonths"];
+  for (const k of allowed) {
+    if (k in fields) {
+      if (["costPrice", "sellingPrice", "quantity", "minStock", "maxStock", "warrantyMonths"].includes(k)) {
+        data[k] = Number(fields[k]) || 0;
+      } else {
+        data[k] = fields[k] || null;
+      }
+    }
+  }
+
+  // If quantity changed, record a stock movement
+  if ("quantity" in fields) {
+    const diff = Number(fields.quantity) - existing.quantity;
+    if (diff !== 0) {
+      const wh = await db.warehouse.findFirst({ where: { tenantId } });
+      await db.stockMovement.create({
+        data: {
+          tenantId,
+          partId: id,
+          warehouseId: wh?.id,
+          type: diff > 0 ? "in" : "out",
+          quantity: Math.abs(diff),
+          refType: "adjustment",
+          note: `Stock adjusted from ${existing.quantity} to ${fields.quantity}`,
+        },
+      });
+    }
+  }
+
+  const part = await db.part.update({ where: { id }, data, include: { category: true, supplier: true } });
+  await db.auditLog.create({ data: { tenantId, action: "updated", module: "inventory", record: part.sku } });
+  return NextResponse.json(part);
+}
+
+// DELETE — delete a part (soft: only if quantity is 0)
+export async function DELETE(req: Request) {
+  const tenantId = await getTenantId();
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  const existing = await db.part.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // Check if part is used in any job cards
+  const usedInJobs = await db.jobCardPart.count({ where: { partId: id } });
+  if (usedInJobs > 0) {
+    return NextResponse.json({ error: "part_in_use", count: usedInJobs }, { status: 400 });
+  }
+
+  await db.part.delete({ where: { id } });
+  await db.auditLog.create({ data: { tenantId, action: "deleted", module: "inventory", record: existing.sku } });
+  return NextResponse.json({ ok: true });
+}
