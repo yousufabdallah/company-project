@@ -17,6 +17,7 @@ import {
   UserCog,
   ScrollText,
   ScanLine,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 import type { ViewKey } from "@/lib/store";
@@ -61,6 +62,7 @@ export const NAV: NavGroup[] = [
     items: [
       { key: "invoices", labelKey: "invoices", icon: Receipt },
       { key: "payments", labelKey: "payments", icon: Wallet },
+      { key: "accounts", labelKey: "accounts", icon: Landmark },
       { key: "expenses", labelKey: "expenses", icon: TrendingDown },
       { key: "warranties", labelKey: "warranties", icon: ShieldCheck },
       { key: "reports", labelKey: "reports", icon: BarChart3 },
