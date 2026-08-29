@@ -240,29 +240,34 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
         }
       ` }} />
       <div className="rounded-lg border bg-white p-6 sm:p-8 print-area text-slate-900 shadow-sm">
-        {/* ─── Premium header: logo + workshop info (left) ─ invoice title (right) ─── */}
-        <div className="flex items-start justify-between gap-4 border-b-2 border-slate-800 pb-4">
-          <div className="flex items-start gap-3">
+        {/* ─── Header: logo on left, workshop name centered, invoice info on right ─── */}
+        <div className="flex items-center justify-between gap-4 border-b-2 border-slate-800 pb-4">
+          {/* Logo (left) — bigger */}
+          <div className="shrink-0">
             {tn.logo ? (
-              <img src={tn.logo} alt={tn.name} className="h-14 w-14 shrink-0 rounded-lg object-contain" key={tn.logo} />
+              <img src={tn.logo} alt={tn.name} className="h-20 w-20 rounded-lg object-contain" key={tn.logo} />
             ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
-                <Receipt className="h-7 w-7" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Receipt className="h-10 w-10" />
               </div>
             )}
-            <div>
-              <h2 className="text-lg font-bold leading-tight text-slate-900">{tn.name || t("appName")}</h2>
-              {tn.address && <p className="mt-0.5 text-[11px] text-slate-600">{tn.address}</p>}
-              <p className="text-[11px] text-slate-600">
-                {tn.phone && <span>{t("phone")}: {tn.phone}</span>}
-                {tn.email && <span className="mx-1">·</span>}
-                {tn.email && <span>{tn.email}</span>}
-              </p>
-              {tn.taxNumber && <p className="text-[11px] text-slate-600">{t("taxNumber")}: {tn.taxNumber}</p>}
-              {tn.crNumber && <p className="text-[11px] text-slate-600">{t("crNumber")}: {tn.crNumber}</p>}
-            </div>
           </div>
-          <div className="text-end">
+
+          {/* Workshop name (center) */}
+          <div className="flex-1 text-center">
+            <h2 className="text-2xl font-bold leading-tight text-slate-900">{tn.name || t("appName")}</h2>
+            {tn.address && <p className="mt-1 text-[11px] text-slate-600">{tn.address}</p>}
+            <p className="text-[11px] text-slate-600">
+              {tn.phone && <span>{t("phone")}: {tn.phone}</span>}
+              {tn.email && <span className="mx-1">·</span>}
+              {tn.email && <span>{tn.email}</span>}
+            </p>
+            {tn.taxNumber && <p className="text-[11px] text-slate-600">{t("taxNumber")}: {tn.taxNumber}</p>}
+            {tn.crNumber && <p className="text-[11px] text-slate-600">{t("crNumber")}: {tn.crNumber}</p>}
+          </div>
+
+          {/* Invoice info (right) — number + date + status only, no logo here */}
+          <div className="shrink-0 text-end">
             <h3 className="text-xl font-bold uppercase tracking-wide text-slate-900">{t("invoices")}</h3>
             <p className="mt-1 inline-block rounded bg-slate-900 px-2 py-0.5 font-mono text-sm font-bold text-white tnum">{inv.code}</p>
             <p className="mt-1 text-xs text-slate-600">{formatDate(inv.date, lang)}</p>
@@ -319,10 +324,7 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
           <div className="flex-1">
             {/* Stamp */}
             {tn.stamp ? (
-              <div className="flex flex-col items-center opacity-90">
-                <img src={tn.stamp} alt="Stamp" className="h-28 w-28 object-contain rotate-[-8deg]" key={tn.stamp} />
-                <p className="mt-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400">{t("workshopStamp")}</p>
-              </div>
+              <img src={tn.stamp} alt="Stamp" className="h-40 w-40 object-contain rotate-[-8deg]" key={tn.stamp} />
             ) : (
               /* Signature area when no stamp */
               <div className="mt-8 max-w-[200px]">
