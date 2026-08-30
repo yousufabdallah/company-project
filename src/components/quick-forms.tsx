@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useT } from "@/lib/format";
 import { useApiMutation } from "@/components/shared";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi } from "@/components/shared";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 
 function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
@@ -101,6 +101,22 @@ export function QuickVehicleForm({ onDone }: { onDone: () => void }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ customerId: "", plateNumber: "", vin: "", make: "", model: "", year: "", color: "", fuelType: "Petrol", mileage: "0" });
 
+  // Customer search
+  const [custSearch, setCustSearch] = useState("");
+  const [custOpen, setCustOpen] = useState(false);
+  const customers = cust?.items || [];
+  const selectedCustomer = customers.find((c: any) => c.id === form.customerId) || null;
+  const filteredCustomers = useMemo(() => {
+    const q = custSearch.trim().toLowerCase();
+    if (!q) return customers.slice(0, 30);
+    return customers.filter((c: any) =>
+      c.name.toLowerCase().includes(q) ||
+      (c.mobile || "").includes(q) ||
+      (c.whatsapp || "").includes(q) ||
+      (c.vehicles || []).some((v: any) => (v.plateNumber || "").toLowerCase().includes(q))
+    ).slice(0, 30);
+  }, [customers, custSearch]);
+
   return (
     <form
       onSubmit={async (e) => {
@@ -121,14 +137,56 @@ export function QuickVehicleForm({ onDone }: { onDone: () => void }) {
       className="space-y-3"
     >
       <Field label={t("customer")} required>
-        <Select value={form.customerId} onValueChange={(v) => setForm({ ...form, customerId: v })}>
-          <SelectTrigger><SelectValue placeholder={t("customer")} /></SelectTrigger>
-          <SelectContent>
-            {(cust?.items || []).map((c: any) => (
-              <SelectItem key={c.id} value={c.id}>{c.name} · {c.mobile}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {selectedCustomer ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 p-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{selectedCustomer.name}</p>
+              <p className="truncate text-xs text-muted-foreground">{selectedCustomer.mobile}</p>
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 text-xs" onClick={() => setForm({ ...form, customerId: "" })}>{t("changeCustomer") || t("edit")}</Button>
+          </div>
+        ) : (
+          <div className="relative">
+            <div className="relative">
+              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={custSearch}
+                onChange={(e) => { setCustSearch(e.target.value); setCustOpen(true); }}
+                onFocus={() => setCustOpen(true)}
+                onBlur={() => setTimeout(() => setCustOpen(false), 150)}
+                placeholder={t("searchCustomer")}
+                className="ps-9"
+                autoComplete="off"
+              />
+            </div>
+            {custOpen && filteredCustomers.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md max-h-64 overflow-y-auto scroll-thin">
+                {filteredCustomers.map((c: any) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setForm({ ...form, customerId: c.id }); setCustSearch(""); setCustOpen(false); }}
+                    className="flex w-full items-center gap-2.5 rounded px-2 py-2 text-start hover:bg-accent"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      {c.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{c.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{c.mobile}</p>
+                    </div>
+                    {(c.vehicles?.length ?? 0) > 0 && (
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tnum">
+                        {c.vehicles.map((v: any) => v.plateNumber).join(" · ")}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t("plateNumber")} required>
