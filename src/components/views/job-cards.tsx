@@ -311,6 +311,7 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [vehicleId, setVehicleId] = useState("");
   const [complaint, setComplaint] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
+  const [fuelLevel, setFuelLevel] = useState("");
   const [technicianId, setTechnicianId] = useState("");
   const [priority, setPriority] = useState("normal");
   const [estimatedCompletion, setEstimatedCompletion] = useState("");
@@ -341,11 +342,11 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   }, [selectedServices, selectedParts, services, allParts, taxPercent, customServices]);
 
   const reset = () => {
-    setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({}); setCustomServices([]);
+    setCustomerId(""); setVehicleId(""); setComplaint(""); setDiagnosis(""); setFuelLevel(""); setTechnicianId(""); setPriority("normal"); setEstimatedCompletion(""); setSelectedServices([]); setSelectedParts({}); setCustomServices([]);
   };
 
   const submit = async () => {
-    if (!customerId || !vehicleId || !complaint) return toastError(t("required"));
+    if (!customerId || !vehicleId) return toastError(t("required"));
     setSaving(true);
     try {
       const servicesPayload = [
@@ -397,6 +398,18 @@ function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </Field>
             <Field label={t("complaint")}>
               <Input value={complaint} onChange={(e) => setComplaint(e.target.value)} placeholder={t("complaint")} />
+            </Field>
+            <Field label={`${t("fuelLevel") || "Fuel Level"} (${t("optional")})`}>
+              <Select value={fuelLevel} onValueChange={setFuelLevel}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="empty">{t("fuelEmpty") || "Empty"}</SelectItem>
+                  <SelectItem value="quarter">¼</SelectItem>
+                  <SelectItem value="half">½</SelectItem>
+                  <SelectItem value="threequarter">¾</SelectItem>
+                  <SelectItem value="full">{t("fuelFull") || "Full"}</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
             <Field label={t("diagnosis")}>
               <Input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder={t("diagnosis")} />
