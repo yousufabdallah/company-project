@@ -272,8 +272,8 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
             {tn.crNumber && <p className="text-[11px] text-slate-600">{t("crNumber")}: {tn.crNumber}</p>}
           </div>
 
-          {/* Invoice info (right) — only on screen, hidden when printing */}
-          <div className="shrink-0 text-end no-print">
+          {/* Invoice info (right) — number + date + status (visible on screen AND print) */}
+          <div className="shrink-0 text-end">
             <h3 className="text-xl font-bold uppercase tracking-wide text-slate-900">{t("invoices")}</h3>
             <p className="mt-1 inline-block rounded bg-slate-900 px-2 py-0.5 font-mono text-sm font-bold text-white tnum">{inv.code}</p>
             <p className="mt-1 text-xs text-slate-600">{formatDate(inv.date, lang)}</p>
@@ -281,12 +281,6 @@ function InvoiceDetail({ inv, money, onClose }: { inv: any; money: (n: number) =
               <StatusBadge status={inv.status} />
             </div>
           </div>
-        </div>
-
-        {/* Invoice number + date + status — visible only when printing (bottom of header area) */}
-        <div className="hidden print:flex items-center justify-end gap-4 py-2 text-xs">
-          <span className="font-mono font-bold tnum">{inv.code}</span>
-          <span className="text-slate-600">{formatDate(inv.date, lang)}</span>
         </div>
 
         {/* ─── Bill To section ─── */}
