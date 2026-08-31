@@ -16,16 +16,20 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # One-shot schema push. Runs on the builder stage because that is the only
-  # image with the Prisma CLI and its full dependency tree; the runtime image
-  # deliberately ships just the traced standalone output.
+  # One-shot schema push plus account bootstrap. Runs on the builder stage
+  # because that is the only image with the Prisma CLI and its full dependency
+  # tree; the runtime image deliberately ships just the traced standalone
+  # output. bootstrap.ts only creates what is missing, so this is safe on every
+  # `up`; prisma/seed.ts is NOT run here because it wipes every table.
   migrate:
     build:
       context: .
       target: builder
     env_file:
       - .env
-    command: bunx prisma db push --accept-data-loss --skip-generate
+    command: >
+      sh -c "bunx prisma db push --accept-data-loss --skip-generate
+      && bun run prisma/bootstrap.ts"
     depends_on:
       db:
         condition: service_healthy
