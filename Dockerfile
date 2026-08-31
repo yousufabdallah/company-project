@@ -30,7 +30,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Prisma CLI + schema, needed at container start to push the sqlite schema
+# Prisma CLI + schema, needed at container start to push the schema to postgres
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
@@ -38,12 +38,12 @@ COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh && \
-    mkdir -p public/uploads /data && \
-    chown -R nextjs:nodejs /app /data
+    mkdir -p public/uploads && \
+    chown -R nextjs:nodejs /app
 
-# Media (public/uploads) and the sqlite db each get their own standalone
-# volume so they survive image rebuilds/redeploys and never mix.
-VOLUME ["/app/public/uploads", "/data"]
+# Uploaded media lives on its own volume so it survives rebuilds and restarts.
+# Postgres data lives in the db service's own volume, never in this image.
+VOLUME ["/app/public/uploads"]
 
 USER nextjs
 EXPOSE 3745

@@ -1,9 +1,8 @@
 #!/bin/sh
 set -e
 
-# DATABASE_URL must be an absolute file: path in Docker (e.g. file:/data/app.db) —
-# a relative sqlite path resolves inconsistently between `prisma db push` and the
-# generated client at runtime.
+# Compose waits for the db healthcheck before starting this container, so the
+# schema push below can assume postgres is accepting connections.
 node_modules/.bin/prisma db push --accept-data-loss --skip-generate
 
 exec "$@"

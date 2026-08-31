@@ -17,6 +17,10 @@ node_modules
 /.next/
 /out/
 
+# build artifacts, never commit
+/.open-next/
+/.wrangler/
+
 # production
 /build
 

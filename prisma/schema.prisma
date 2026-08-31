@@ -1,5 +1,5 @@
 // Auto Workshop SaaS — Multi-tenant data model
-// Designed to mirror a Laravel/MySQL SaaS schema but running on SQLite for the preview.
+// Designed to mirror a Laravel/MySQL SaaS schema, running on PostgreSQL.
 
 generator client {
   provider = "prisma-client-js"

@@ -1,17 +1,38 @@
 services:
-  app:
-    build: .
-    ports:
-      - "3745:3745"
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: "file:/data/app.db"
-      SESSION_SECRET: ${SESSION_SECRET}
-      NODE_ENV: production
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - db_data:/data
-      - uploads_data:/app/public/uploads
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
+  app:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "${PORT}:${PORT}"
+    volumes:
+      - uploads_data:/app/public/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+# Named volumes, split by concern so a rebuild or restart never touches either:
+# pgdata       -> postgres data directory only
+# uploads_data -> uploaded media only
+# Both survive `docker compose down` and image rebuilds; only `down -v` drops them.
 volumes:
-  db_data:
+  pgdata:
   uploads_data:
