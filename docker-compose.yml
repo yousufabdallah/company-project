@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3745:3745"
+    environment:
+      DATABASE_URL: "file:/data/app.db"
+      SESSION_SECRET: ${SESSION_SECRET}
+      NODE_ENV: production
+    volumes:
+      - db_data:/data
+      - uploads_data:/app/public/uploads
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  uploads_data:

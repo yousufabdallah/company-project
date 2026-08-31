@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+*.db
+public/uploads/*
+!public/uploads/.gitkeep
+upload
+download
+tests
+worklog.md
+.zscripts
+tool-results
