@@ -16,6 +16,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # One-shot schema push. Runs on the builder stage because that is the only
+  # image with the Prisma CLI and its full dependency tree; the runtime image
+  # deliberately ships just the traced standalone output.
+  migrate:
+    build:
+      context: .
+      target: builder
+    env_file:
+      - .env
+    command: bunx prisma db push --accept-data-loss --skip-generate
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   app:
     build: .
     env_file:
@@ -27,6 +42,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 # Named volumes, split by concern so a rebuild or restart never touches either:
