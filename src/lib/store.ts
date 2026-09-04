@@ -28,11 +28,13 @@ export type ViewKey =
 export type Screen = "landing" | "login" | "signup" | "app" | "superadmin";
 
 export interface AuthUser {
+  id?: string;
   name: string;
   email: string;
   role: "owner" | "manager" | "advisor" | "technician" | "accountant" | "inventory" | "super_admin";
   tenantId?: string | null;
   tenantName?: string | null;
+  permissions?: Record<string, boolean>;
 }
 
 const PLATFORM_TENANT = "Platform Administration";

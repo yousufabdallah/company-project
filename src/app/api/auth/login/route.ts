@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyCredentials, createSession } from "@/lib/auth-server";
+import { withEffectivePermissions } from "@/lib/guards";
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -16,12 +17,5 @@ export async function POST(req: Request) {
 
   await createSession(user);
 
-  return NextResponse.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    tenantId: user.tenantId,
-    tenantName: user.tenantName,
-  });
+  return NextResponse.json(await withEffectivePermissions(user));
 }

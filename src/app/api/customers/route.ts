@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { getTenantId, nextCode } from "@/lib/api";
+import { denyWithoutPermission } from "@/lib/guards";
+import { getSession } from "@/lib/auth-server";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -22,22 +24,30 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await denyWithoutPermission("customers", "create");
+  if (denied) return denied;
+
   const tenantId = await getTenantId();
   const body = await req.json();
+  const name = body.name?.trim();
+  const mobile = body.mobile?.trim();
+  if (!name || !mobile) return NextResponse.json({ error: "name_and_mobile_required" }, { status: 400 });
+
   const code = await nextCode("CUST-", "customer", tenantId);
   const customer = await db.customer.create({
     data: {
       tenantId,
       code,
-      name: body.name,
-      mobile: body.mobile,
-      whatsapp: body.whatsapp || body.mobile,
-      email: body.email || null,
-      address: body.address || null,
-      type: body.type || "individual",
-      notes: body.notes || null,
+      name,
+      mobile,
+      whatsapp: body.whatsapp?.trim() || mobile,
+      email: body.email?.trim() || null,
+      address: body.address?.trim() || null,
+      type: body.type === "corporate" ? "corporate" : "individual",
+      notes: body.notes?.trim() || null,
     },
   });
-  await db.auditLog.create({ data: { tenantId, action: "created", module: "customers", record: customer.code } });
+  const session = await getSession();
+  await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "created", module: "customers", record: `${customer.code} · ${customer.name}` } });
   return NextResponse.json(customer, { status: 201 });
 }

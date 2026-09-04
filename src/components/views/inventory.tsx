@@ -13,13 +13,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useApp } from "@/lib/store";
 import { useState } from "react";
 import { Package, Search, Plus, AlertTriangle, PackageSearch, Pencil, Trash2, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 export function InventoryView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/parts");
   const setQuickCreate = useApp((s) => s.setQuickCreate);
   const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState<any>(null);
@@ -112,16 +112,16 @@ export function InventoryView() {
                               )}
                               {canDelete("inventory") && (
                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={async () => {
-                                  if (!confirm(t("confirmDelete"))) return;
+                                  if (!confirm(t("confirmDeleteRecord"))) return;
                                   try {
                                     const res = await fetch(`/api/parts?id=${p.id}`, { method: "DELETE" });
                                     if (!res.ok) {
-                                      const err = await res.json();
+                                      const err = await res.json().catch(() => ({}));
                                       toastError(err.error === "part_in_use" ? `${t("inventory")} used in ${err.count} job cards` : "Error");
                                       return;
                                     }
-                                    toastSuccess(t("saved"));
-                                    window.location.reload();
+                                    invalidate(["/api/parts", "/api/dashboard"]);
+                                    toastSuccess();
                                   } catch { toastError("Error"); }
                                 }}>
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -210,7 +210,7 @@ function EditPartDialog({ part, onClose }: { part: any; onClose: () => void }) {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scroll-thin">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("editPlan") || "Edit"}: {part.name}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("edit")}: {part.name}</DialogTitle>
           <DialogDescription className="sr-only">{t("inventory")}</DialogDescription>
         </DialogHeader>
 

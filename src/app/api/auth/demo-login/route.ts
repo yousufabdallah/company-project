@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createSession } from "@/lib/auth-server";
+import { withEffectivePermissions } from "@/lib/guards";
 
 // Demo login — logs in as a demo user by role.
 // SECURITY: This endpoint is for development/demo only.
@@ -38,5 +39,5 @@ export async function POST(req: Request) {
 
   await createSession(sessionUser);
 
-  return NextResponse.json(sessionUser);
+  return NextResponse.json(await withEffectivePermissions(sessionUser));
 }

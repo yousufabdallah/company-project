@@ -65,3 +65,23 @@ Stage Summary:
 - Tax formula in create dialogs confirmed correct (no discount in those forms ⇒ frontend == backend).
 - Tax % now appears next to every Tax row in: Job Card detail + create dialog, Estimate detail + create dialog, POS main cart + printable receipt — fully consistent across the app.
 - Purchases now have full tax accounting: schema fields, POST computes tax+grandTotal via shared `calculateTax`/`calculateGrandTotal`, `paid` tracks the grand total, the list view shows tax/grandTotal columns with a totals footer, and the create dialog previews all three amounts live. Re-seeded the demo tenant so PO-0001 reflects the new fields.
+
+---
+Task ID: 22
+Agent: main (Claude Code)
+Task: Full CRUD for admin/owner — Clients (Customers) & Products (Parts/Inventory)
+
+Work Log:
+- New src/lib/guards.ts: denyWithoutPermission(module, action) — server-side permission guard for mutating routes. 401 without session, owner/super_admin always pass, everyone else checked against their stored User.permissions JSON (falling back to role defaults when the column is null/"{}"/malformed), 403 on missing grant. Also withEffectivePermissions() to attach effective permissions to auth responses.
+- Customers API: POST validates name+mobile (400 name_and_mobile_required) + guard customers.create; PUT [id] rewritten from updateMany({...body}) mass-assignment to a whitelisted field update (name/mobile/whatsapp/email/address/type/notes) with findFirst tenant check + 404 + guard customers.edit; DELETE [id] now guards customers.delete and blocks deletion when the customer has jobCards/invoices/payments/appointments/estimates (400 customer_in_use with counts) — financial history is preserved; vehicles still cascade when deletion is allowed. All audit logs now record userId.
+- Parts API: POST/PATCH/DELETE now guarded by inventory.create/edit/delete; POST validates sku+name (400 sku_and_name_required) and trims; audit logs record userId. GET untouched (demo preview fallback preserved).
+- Customers view: new permission-gated Actions column (edit pencil + delete trash with stopPropagation so the row's detail dialog doesn't open), EditCustomerDialog (name/mobile/whatsapp/email/type/address/notes → PUT) with invalidation + toasts, delete with bilingual confirm and customer_in_use error mapping, and edit/delete buttons in the detail dialog header.
+- Inventory view: fixed latent ReferenceError — delete handler called toastSuccess/toastError that were only in scope inside EditPartDialog; delete now invalidates queries instead of window.location.reload(); edit dialog title uses t("edit") instead of t("editPlan"); removed dead sonner import.
+- Auth: /api/auth/me, /api/auth/login, /api/auth/demo-login now return effective permissions alongside the session (never stored in the signed cookie), so client-side UI gating (usePermissions) matches server-side enforcement for users with customized grants; AuthUser type extended with id/permissions.
+- i18n: confirmDeleteCustomer, customerInUse, confirmDeleteRecord added in EN + AR.
+
+Stage Summary:
+- Clients & Products now have complete, role-gated CRUD end to end: list/read for everyone with view access; create/edit/delete enforced server-side by the permission matrix (owner/manager/full-admin pass via defaults; super_admin impersonation passes; unauthenticated mutations now get 401 instead of silently hitting the demo tenant).
+- Customer deletion protects accounting history (blocks when referenced beyond vehicles); part deletion already blocked when used in job cards.
+- Not verified at runtime: no Node/bun/Docker on this machine — changes were statically reviewed (imports, JSX balance, consumer compatibility) only; run `bun run lint` and exercise the dialogs in the usual dev sandbox.
+- Known adjacent gap (untouched, by design): Services module still has no PATCH/DELETE.

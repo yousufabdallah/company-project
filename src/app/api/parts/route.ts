@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { getTenantId } from "@/lib/api";
+import { denyWithoutPermission } from "@/lib/guards";
+import { getSession } from "@/lib/auth-server";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -20,14 +22,18 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await denyWithoutPermission("inventory", "create");
+  if (denied) return denied;
+
   const tenantId = await getTenantId();
   const body = await req.json();
+  if (!body.sku?.trim() || !body.name?.trim()) return NextResponse.json({ error: "sku_and_name_required" }, { status: 400 });
   const part = await db.part.create({
     data: {
       tenantId,
-      sku: body.sku,
+      sku: body.sku.trim(),
       barcode: body.barcode || null,
-      name: body.name,
+      name: body.name.trim(),
       nameAr: body.nameAr || null,
       categoryId: body.categoryId || null,
       brand: body.brand || null,
@@ -45,12 +51,16 @@ export async function POST(req: Request) {
     const wh = await db.warehouse.findFirst({ where: { tenantId } });
     await db.stockMovement.create({ data: { tenantId, partId: part.id, warehouseId: wh?.id, type: "in", quantity: part.quantity, refType: "opening", note: "Opening stock" } });
   }
-  await db.auditLog.create({ data: { tenantId, action: "created", module: "inventory", record: part.sku } });
+  const session = await getSession();
+  await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "created", module: "inventory", record: part.sku } });
   return NextResponse.json(part, { status: 201 });
 }
 
 // PATCH — update an existing part
 export async function PATCH(req: Request) {
+  const denied = await denyWithoutPermission("inventory", "edit");
+  if (denied) return denied;
+
   const tenantId = await getTenantId();
   const body = await req.json();
   const { id, ...fields } = body;
@@ -92,12 +102,16 @@ export async function PATCH(req: Request) {
   }
 
   const part = await db.part.update({ where: { id }, data, include: { category: true, supplier: true } });
-  await db.auditLog.create({ data: { tenantId, action: "updated", module: "inventory", record: part.sku } });
+  const session = await getSession();
+  await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "updated", module: "inventory", record: part.sku } });
   return NextResponse.json(part);
 }
 
-// DELETE — delete a part (soft: only if quantity is 0)
+// DELETE — delete a part (blocked when used in job cards)
 export async function DELETE(req: Request) {
+  const denied = await denyWithoutPermission("inventory", "delete");
+  if (denied) return denied;
+
   const tenantId = await getTenantId();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
@@ -113,6 +127,7 @@ export async function DELETE(req: Request) {
   }
 
   await db.part.delete({ where: { id } });
-  await db.auditLog.create({ data: { tenantId, action: "deleted", module: "inventory", record: existing.sku } });
+  const session = await getSession();
+  await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "deleted", module: "inventory", record: existing.sku } });
   return NextResponse.json({ ok: true });
 }
