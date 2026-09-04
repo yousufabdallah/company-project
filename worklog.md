@@ -85,3 +85,16 @@ Stage Summary:
 - Customer deletion protects accounting history (blocks when referenced beyond vehicles); part deletion already blocked when used in job cards.
 - Not verified at runtime: no Node/bun/Docker on this machine — changes were statically reviewed (imports, JSX balance, consumer compatibility) only; run `bun run lint` and exercise the dialogs in the usual dev sandbox.
 - Known adjacent gap (untouched, by design): Services module still has no PATCH/DELETE.
+
+---
+Task ID: 23
+Agent: main (Claude Code)
+Task: Visible scrollbar for the mobile navbar (sidebar drawer)
+
+Work Log:
+- Root cause: the sidebar nav used Radix ScrollArea inside the Sheet drawer's flex column. The ScrollArea root had no overflow/min-height, so the flex item couldn't shrink below content — the scroll viewport never engaged on mobile — and Radix hides the native scrollbar while its custom thumb (bg-border on --sidebar) was nearly invisible anyway.
+- sidebar.tsx: replaced ScrollArea with a plain `min-h-0 flex-1 overflow-y-auto scroll-thin` div (overflow also zeroes the flex automatic min-height). Applies to both the mobile drawer and the desktop sidebar since they share SidebarContent.
+- globals.css: .scroll-thin thumb raised from --border to --muted-foreground (2px transparent padding, background-clip) with --foreground on hover, and scrollbar-color updated to match — thin scrollbars are now clearly visible in light/dark everywhere scroll-thin is used (dialogs, POS grid, dashboard lists included).
+
+Stage Summary:
+- Mobile nav drawer now scrolls properly with a visible thin scrollbar; desktop sidebar got the same fix for short viewports.

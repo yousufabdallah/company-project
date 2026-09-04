@@ -5,7 +5,6 @@ import { useApp } from "@/lib/store";
 import { useT } from "@/lib/format";
 import { usePermissions } from "@/lib/use-permissions";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Wrench } from "lucide-react";
 import { useApi } from "@/components/shared";
 
@@ -30,7 +29,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       {/* Nav */}
-      <ScrollArea className="flex-1 px-2 py-3 scroll-thin">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 scroll-thin">
         <nav className="space-y-4">
           {NAV.map((group) => {
             const visibleItems = group.items.filter((item) => canView(item.key));
@@ -67,7 +66,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             );
           })}
         </nav>
-      </ScrollArea>
+      </div>
 
       {/* Footer plan */}
       <div className="border-t border-sidebar-border px-4 py-3">
