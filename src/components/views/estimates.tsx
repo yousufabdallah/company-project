@@ -193,7 +193,7 @@ function EstimateDetail({ est, money, onClose }: { est: any; money: (n: number) 
 function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { t, lang } = useT();
   const { data: cust } = useApi<any>("/api/customers");
-  const { data: svc } = useApi<any>("/api/services");
+  const { data: svc } = useApi<any>("/api/services?active=1");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: settings } = useApi<any>("/api/settings");
   const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;

@@ -257,7 +257,7 @@ export function QuickAppointmentForm({ onDone }: { onDone: () => void }) {
   const { t } = useT();
   const { invalidate, toastSuccess, toastError } = useApiMutation();
   const { data: cust } = useApi<any>("/api/customers");
-  const { data: svc } = useApi<any>("/api/services");
+  const { data: svc } = useApi<any>("/api/services?active=1");
   const [saving, setSaving] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({ customerId: "", vehicleId: "", serviceId: "", date: today, time: "09:00", technicianId: "", notes: "" });
