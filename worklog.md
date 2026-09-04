@@ -98,3 +98,18 @@ Work Log:
 
 Stage Summary:
 - Mobile nav drawer now scrolls properly with a visible thin scrollbar; desktop sidebar got the same fix for short viewports.
+
+---
+Task ID: 24
+Agent: Codex
+Task: Full CRUD for Services
+
+Work Log:
+- Added `GET /api/services/[id]`, `PUT /api/services/[id]`, and `DELETE /api/services/[id]`; upgraded the collection POST with strict validation, normalized codes, duplicate-code detection, permission guards, tenant scoping, and user-attributed audit logs.
+- Service deletion is blocked when appointments or job-card services reference the catalog entry. A foreign-key race is also mapped to the same `service_in_use` response so operational history is preserved.
+- Rebuilt the Services view with search, active/inactive filtering, permission-gated create/edit/delete actions, a shared create/edit dialog, numeric validation, active-state control, loading states, and bilingual error messages.
+- Inactive services stay manageable in the catalog but are excluded from new appointments, estimates, and job cards through the API's active filter.
+- Verification: focused ESLint passed; service input schema checks passed; production build passed and emitted both Services routes. Repository-wide lint/typecheck still report unrelated pre-existing errors outside this change.
+
+Stage Summary:
+- Services now have complete, tenant-safe, role-gated CRUD across the API and UI, with safe handling for catalog entries already used by operational records.

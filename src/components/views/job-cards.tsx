@@ -300,7 +300,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function JobCardCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { t, lang } = useT();
   const { data: cust } = useApi<any>("/api/customers");
-  const { data: svc } = useApi<any>("/api/services");
+  const { data: svc } = useApi<any>("/api/services?active=1");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: tenants } = useApi<any>("/api/settings");
   const taxPercent = tenants?.taxEnabled ? (tenants?.taxPercent ?? 0) : 0;
