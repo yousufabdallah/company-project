@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() || "";
   const active = searchParams.get("active");
-  const where: any = { tenantId };
+  const where: any = { tenantId, deleted: false };
   if (q) {
     where.OR = [
       { name: { contains: q, mode: "insensitive" } },
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   }
 
   const duplicate = await db.service.findFirst({
-    where: { tenantId, code: { equals: parsed.data.code, mode: "insensitive" } },
+    where: { tenantId, deleted: false, code: { equals: parsed.data.code, mode: "insensitive" } },
     select: { id: true },
   });
   if (duplicate) {

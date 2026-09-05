@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") || "";
   const lowOnly = searchParams.get("low") === "1";
-  const where: any = { tenantId };
+  const where: any = { tenantId, deleted: false };
   if (q) where.OR = [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }, { nameAr: { contains: q } }];
   const items = await db.part.findMany({
     where,
@@ -107,7 +107,8 @@ export async function PATCH(req: Request) {
   return NextResponse.json(part);
 }
 
-// DELETE — delete a part (blocked when used in job cards)
+// DELETE — soft-delete a part (?id=...). Stock movements, job card parts and
+// purchase history keep resolving the flagged record.
 export async function DELETE(req: Request) {
   const denied = await denyWithoutPermission("inventory", "delete");
   if (denied) return denied;
@@ -120,13 +121,7 @@ export async function DELETE(req: Request) {
   const existing = await db.part.findFirst({ where: { id, tenantId } });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Check if part is used in any job cards
-  const usedInJobs = await db.jobCardPart.count({ where: { partId: id } });
-  if (usedInJobs > 0) {
-    return NextResponse.json({ error: "part_in_use", count: usedInJobs }, { status: 400 });
-  }
-
-  await db.part.delete({ where: { id } });
+  await db.part.update({ where: { id }, data: { deleted: true } });
   const session = await getSession();
   await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "deleted", module: "inventory", record: existing.sku } });
   return NextResponse.json({ ok: true });

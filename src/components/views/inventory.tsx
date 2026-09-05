@@ -115,11 +115,7 @@ export function InventoryView() {
                                   if (!confirm(t("confirmDeleteRecord"))) return;
                                   try {
                                     const res = await fetch(`/api/parts?id=${p.id}`, { method: "DELETE" });
-                                    if (!res.ok) {
-                                      const err = await res.json().catch(() => ({}));
-                                      toastError(err.error === "part_in_use" ? `${t("inventory")} used in ${err.count} job cards` : "Error");
-                                      return;
-                                    }
+                                    if (!res.ok) { toastError("Error"); return; }
                                     invalidate(["/api/parts", "/api/dashboard"]);
                                     toastSuccess();
                                   } catch { toastError("Error"); }

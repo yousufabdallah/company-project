@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getTenantId } from "@/lib/api";
 import { getSession } from "@/lib/auth-server";
@@ -42,6 +41,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
       where: {
         tenantId,
         id: { not: id },
+        deleted: false,
         code: { equals: parsed.data.code, mode: "insensitive" },
       },
       select: { id: true },
@@ -77,26 +77,9 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const [jobCards, appointments] = await Promise.all([
-    db.jobCardService.count({ where: { serviceId: id } }),
-    db.appointment.count({ where: { serviceId: id } }),
-  ]);
-  if (jobCards + appointments > 0) {
-    return NextResponse.json(
-      { error: "service_in_use", counts: { jobCards, appointments } },
-      { status: 409 },
-    );
-  }
-
-  try {
-    await db.service.delete({ where: { id } });
-  } catch (error) {
-    // A linked record may have been created after the usage check.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
-      return NextResponse.json({ error: "service_in_use" }, { status: 409 });
-    }
-    throw error;
-  }
+  // Soft delete: job cards, appointments and warranties keep resolving the
+  // flagged service — only lists and pickers hide it.
+  await db.service.update({ where: { id }, data: { deleted: true } });
 
   const session = await getSession();
   await db.auditLog.create({

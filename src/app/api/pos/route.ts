@@ -143,7 +143,7 @@ export async function POST(req: Request) {
 
 // Ensure a "Walk-in Customer" exists for the tenant (used when no customer is selected)
 async function ensureWalkInCustomer(tenantId: string): Promise<string> {
-  let walkIn = await db.customer.findFirst({ where: { tenantId, name: "Walk-in Customer" } });
+  let walkIn = await db.customer.findFirst({ where: { tenantId, name: "Walk-in Customer", deleted: false } });
   if (!walkIn) {
     const count = await db.customer.count({ where: { tenantId } });
     walkIn = await db.customer.create({

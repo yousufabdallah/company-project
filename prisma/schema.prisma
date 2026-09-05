@@ -112,6 +112,7 @@ model Customer {
   type       String   @default("individual") // individual | corporate
   notes      String?
   balance    Float    @default(0)
+  deleted    Boolean  @default(false) // soft delete: hidden from lists, kept for history
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -199,6 +200,7 @@ model Service {
   price          Float    @default(0)
   warrantyMonths Int      @default(0)
   active         Boolean  @default(true)
+  deleted        Boolean  @default(false) // soft delete: hidden from lists, kept for history
   createdAt      DateTime @default(now())
 
   jobCardServices JobCardService[]
@@ -225,6 +227,7 @@ model Part {
   maxStock      Int       @default(100)
   location      String?
   warrantyMonths Int      @default(0)
+  deleted       Boolean   @default(false) // soft delete: hidden from lists, kept for history
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

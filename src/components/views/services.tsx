@@ -79,9 +79,8 @@ export function ServicesView() {
     setDeletingId(service.id);
     try {
       const response = await fetch(`/api/services/${service.id}`, { method: "DELETE" });
-      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        toastError(result.error === "service_in_use" ? t("serviceInUse") : t("requestFailed"));
+        toastError(t("requestFailed"));
         return;
       }
       invalidateServices();

@@ -31,8 +31,7 @@ export function CustomersView() {
     try {
       const res = await fetch(`/api/customers/${c.id}`, { method: "DELETE" });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toastError(err.error === "customer_in_use" ? t("customerInUse") : "Error");
+        toastError("Error");
         return;
       }
       invalidate(["/api/customers", "/api/dashboard"]);

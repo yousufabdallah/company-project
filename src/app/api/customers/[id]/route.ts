@@ -63,20 +63,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const existing = await db.customer.findFirst({ where: { id, tenantId } });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Preserve financial/operational history: block deletion when the customer
-  // is referenced by anything beyond their own vehicles (which cascade).
-  const [jobCards, invoices, payments, appointments, estimates] = await Promise.all([
-    db.jobCard.count({ where: { customerId: id } }),
-    db.invoice.count({ where: { customerId: id } }),
-    db.payment.count({ where: { customerId: id } }),
-    db.appointment.count({ where: { customerId: id } }),
-    db.estimate.count({ where: { customerId: id } }),
-  ]);
-  if (jobCards + invoices + payments + appointments + estimates > 0) {
-    return NextResponse.json({ error: "customer_in_use", counts: { jobCards, invoices, payments, appointments, estimates } }, { status: 400 });
-  }
-
-  await db.customer.delete({ where: { id } });
+  // Soft delete: keep the customer reachable from invoices, payments, job cards
+  // and analytics — only hide them from lists and pickers.
+  await db.customer.update({ where: { id }, data: { deleted: true } });
   const session = await getSession();
   await db.auditLog.create({ data: { tenantId, userId: session?.id ?? null, action: "deleted", module: "customers", record: `${existing.code} · ${existing.name}` } });
   return NextResponse.json({ ok: true });

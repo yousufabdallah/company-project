@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const q = searchParams.get("q") || "";
   const type = searchParams.get("type") || "";
 
-  const where: any = { tenantId };
+  const where: any = { tenantId, deleted: false };
   if (q) where.OR = [{ name: { contains: q } }, { mobile: { contains: q } }, { code: { contains: q } }, { email: { contains: q } }];
   if (type) where.type = type;
 
