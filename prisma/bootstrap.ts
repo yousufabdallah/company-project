@@ -7,6 +7,9 @@
 // deletes anything. Unlike prisma/seed.ts, it wipes no tables and inserts no
 // demo business data. Passwords are bcrypt-hashed and read from the
 // environment, so a deployment can set its own without editing this file.
+// The environment password only applies when an account is first created (or
+// when BOOTSTRAP_RESET_PASSWORDS=1) — passwords changed in the app survive
+// redeploys.
 //
 // Run: bun run prisma/bootstrap.ts
 //
@@ -39,22 +42,39 @@ async function ensureTenant(name: string, data: Record<string, unknown>) {
   return created;
 }
 
-// Email is unique, so an upsert keeps this idempotent. An existing account has
-// its password reset to the configured one, which keeps a deployment able to
-// recover a lost login by changing the environment and re-running.
+// Email is unique, so a find-then-create/update keeps this idempotent. An
+// existing account's password is left untouched: users change their passwords
+// in the app, and a redeploy must never revert them. Set
+// BOOTSTRAP_RESET_PASSWORDS=1 to force accounts back to the configured
+// passwords (e.g. to recover a lost login).
 async function ensureUser(
   email: string,
   password: string,
   data: { tenantId: string; name: string; role: string },
 ) {
-  const hashed = await bcrypt.hash(password, 10);
-  const user = await db.user.upsert({
+  const resetPasswords = ["1", "true"].includes(
+    (process.env.BOOTSTRAP_RESET_PASSWORDS || "").toLowerCase(),
+  );
+  const existing = await db.user.findUnique({ where: { email } });
+
+  if (!existing) {
+    const hashed = await bcrypt.hash(password, 10);
+    await db.user.create({
+      data: { email, password: hashed, active: true, ...data },
+    });
+    console.log(`✓ ${data.role} created: ${email}`);
+    return;
+  }
+
+  await db.user.update({
     where: { email },
-    update: { ...data, password: hashed, active: true },
-    create: { email, password: hashed, active: true, ...data },
+    data: resetPasswords
+      ? { ...data, active: true, password: await bcrypt.hash(password, 10) }
+      : { ...data, active: true },
   });
-  console.log(`✓ ${data.role} ready: ${email}`);
-  return user;
+  console.log(
+    `✓ ${data.role} ready: ${email}${resetPasswords ? " (password reset from environment)" : ""}`,
+  );
 }
 
 async function main() {
@@ -91,7 +111,8 @@ async function main() {
   console.log("═══════════════════════════════════════════");
   console.log(`  super admin : ${SUPER_ADMIN_EMAIL}`);
   console.log(`  owner       : ${OWNER_EMAIL}`);
-  console.log("  (passwords come from the environment; stored as bcrypt hashes)");
+  console.log("  (in-app password changes are kept across redeploys; set");
+  console.log("  BOOTSTRAP_RESET_PASSWORDS=1 to force-reset from the environment)");
   console.log("═══════════════════════════════════════════\n");
 }
 
