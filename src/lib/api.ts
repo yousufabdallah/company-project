@@ -50,6 +50,13 @@ export function parseBody<T = any>(body: any): T {
   return (body ?? {}) as T;
 }
 
+export async function writeAudit(tenantId: string, action: string, module: string, record?: string | null) {
+  const session = await getSession();
+  await db.auditLog.create({
+    data: { tenantId, userId: session?.id ?? null, action, module, record: record || null },
+  });
+}
+
 // Build sequential codes per tenant
 export async function nextCode(prefix: string, model: string, tenantId: string) {
   const count = await (db as any)[model].count({ where: { tenantId } });

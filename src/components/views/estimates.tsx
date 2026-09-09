@@ -1,7 +1,8 @@
 "use client";
 
 import { useT, formatMoney, formatDate } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation } from "@/components/shared";
+import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation, RowActions } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,18 +11,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useApp } from "@/lib/store";
 import { useMemo, useState } from "react";
-import { FileText, Plus, Search, Check, X, Printer, Trash2, ArrowRight } from "lucide-react";
+import { FileText, Plus, Search, Check, X, Printer, Trash2, ArrowRight, Pencil, Loader2 } from "lucide-react";
 
 export function EstimatesView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/estimates");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const money = (n: number) => formatMoney(n, "OMR", lang);
+
+  const deleteEstimate = async (est: any) => {
+    if (!confirm(t("confirmDeleteRecord"))) return;
+    try {
+      const res = await fetch(`/api/estimates/${est.id}`, { method: "DELETE" });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
+      invalidate(["/api/estimates", "/api/dashboard"]);
+      toastSuccess();
+      if (selected === est.id) setSelected(null);
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const items = (data?.items || []).filter((e: any) => {
     if (statusFilter !== "all" && e.status !== statusFilter) return false;
@@ -33,7 +49,7 @@ export function EstimatesView() {
   return (
     <div>
       <PageHeader title={t("estimates")} subtitle={`${items.length} ${t("estimates").toLowerCase()}`}>
-        <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {canCreate("estimates") && <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>}
       </PageHeader>
 
       <Card>
@@ -64,6 +80,7 @@ export function EstimatesView() {
                     <TableHead className="hidden md:table-cell">{t("date")}</TableHead>
                     <TableHead>{t("status")}</TableHead>
                     <TableHead className="text-end">{t("grandTotal")}</TableHead>
+                    {(canEdit("estimates") || canDelete("estimates")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -77,6 +94,11 @@ export function EstimatesView() {
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(e.date, lang)}</TableCell>
                       <TableCell><StatusBadge status={e.status} /></TableCell>
                       <TableCell className="text-end font-semibold tnum">{money(e.grandTotal)}</TableCell>
+                      {(canEdit("estimates") || canDelete("estimates")) && (
+                        <TableCell className="text-end" onClick={(ev) => ev.stopPropagation()}>
+                          <RowActions canEdit={canEdit("estimates")} canDelete={canDelete("estimates")} onEdit={() => setEditing(e)} onDelete={() => deleteEstimate(e)} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -86,12 +108,26 @@ export function EstimatesView() {
         </CardContent>
       </Card>
 
-      <EstimateCreateDialog open={creating} onOpenChange={setCreating} />
+      <EstimateDialog open={creating} onOpenChange={setCreating} />
+      {editing && <EstimateDialog open estimate={editing} onOpenChange={(o) => !o && setEditing(null)} />}
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto scroll-thin">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />{detail?.code}<StatusBadge status={detail?.status} /></DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />{detail?.code}{detail && <StatusBadge status={detail.status} />}
+              <span className="flex-1" />
+              {detail && canEdit("estimates") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7" title={t("edit")} onClick={() => setEditing(detail)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {detail && canDelete("estimates") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title={t("delete")} onClick={() => deleteEstimate(detail)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </DialogTitle>
             <DialogDescription className="sr-only">{t("estimates")}</DialogDescription>
           </DialogHeader>
           {detail && <EstimateDetail est={detail} money={money} onClose={() => setSelected(null)} />}
@@ -190,7 +226,7 @@ function EstimateDetail({ est, money, onClose }: { est: any; money: (n: number) 
   );
 }
 
-function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function EstimateDialog({ open, onOpenChange, estimate }: { open: boolean; onOpenChange: (o: boolean) => void; estimate?: any }) {
   const { t, lang } = useT();
   const { data: cust } = useApi<any>("/api/customers");
   const { data: svc } = useApi<any>("/api/services?active=1");
@@ -199,10 +235,11 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
 
-  const [customerId, setCustomerId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<any[]>([]);
+  const isEdit = !!estimate;
+  const [customerId, setCustomerId] = useState(estimate?.customerId || "");
+  const [vehicleId, setVehicleId] = useState(estimate?.vehicleId || "");
+  const [notes, setNotes] = useState(estimate?.notes || "");
+  const [items, setItems] = useState<any[]>(() => (estimate?.items || []).map((i: any) => ({ type: i.type, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, discount: i.discount || 0, total: i.total })));
   const [saving, setSaving] = useState(false);
 
   const vehicles = (cust?.items || []).find((c: any) => c.id === customerId)?.vehicles || [];
@@ -224,10 +261,15 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     if (!customerId || items.length === 0) return toastError(t("required"));
     setSaving(true);
     try {
-      await fetch("/api/estimates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerId, vehicleId, items, notes }) });
+      const res = await fetch(isEdit ? `/api/estimates/${estimate.id}` : "/api/estimates", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId, vehicleId, items, notes }),
+      });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
       invalidate(["/api/estimates", "/api/dashboard"]);
       toastSuccess();
-      setItems([]); setNotes(""); setCustomerId(""); setVehicleId("");
+      if (!isEdit) { setItems([]); setNotes(""); setCustomerId(""); setVehicleId(""); }
       onOpenChange(false);
     } catch {
       toastError("Error");
@@ -240,7 +282,10 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto scroll-thin">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />{t("addNew")} · {t("estimates")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {isEdit ? <Pencil className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+            {isEdit ? `${t("edit")}: ${estimate.code}` : `${t("addNew")} · ${t("estimates")}`}
+          </DialogTitle>
           <DialogDescription>{t("services")} + {t("parts")} → {t("grandTotal")}</DialogDescription>
         </DialogHeader>
 
@@ -316,7 +361,7 @@ function EstimateCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-            <Button onClick={submit} disabled={saving}>{t("create")}</Button>
+            <Button onClick={submit} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}{isEdit ? t("save") : t("create")}</Button>
           </div>
         </div>
       </DialogContent>

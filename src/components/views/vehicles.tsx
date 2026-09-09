@@ -1,22 +1,45 @@
 "use client";
 
 import { useT, formatMoney, formatDate, formatNumber } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
+import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation, RowActions } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApp } from "@/lib/store";
 import { useState } from "react";
-import { Search, Plus, Car, Wrench, Receipt, Gauge, QrCode } from "lucide-react";
+import { Search, Plus, Car, Wrench, Receipt, Gauge, QrCode, Pencil, Trash2, Loader2 } from "lucide-react";
 
 export function VehiclesView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/vehicles");
   const setQuickCreate = useApp((s) => s.setQuickCreate);
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<any>(null);
+
+  const deleteVehicle = async (v: any) => {
+    if (!confirm(t("confirmDeleteVehicle"))) return;
+    try {
+      const res = await fetch(`/api/vehicles/${v.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error === "vehicle_in_use" ? t("vehicleInUse") : t("requestFailed"));
+        return;
+      }
+      invalidate(["/api/vehicles", "/api/customers", "/api/dashboard"]);
+      toastSuccess();
+      if (selected === v.id) setSelected(null);
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const money = (n: number) => formatMoney(n, "OMR", lang);
   const items = (data?.items || []).filter((v: any) =>
@@ -28,7 +51,7 @@ export function VehiclesView() {
   return (
     <div>
       <PageHeader title={t("vehicles")} subtitle={`${items.length} ${t("vehicles").toLowerCase()}`}>
-        <Button size="sm" onClick={() => setQuickCreate("vehicle")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {canCreate("vehicles") && <Button size="sm" onClick={() => setQuickCreate("vehicle")}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>}
       </PageHeader>
 
       <Card>
@@ -53,6 +76,7 @@ export function VehiclesView() {
                     <TableHead className="hidden sm:table-cell">{t("year")}</TableHead>
                     <TableHead className="hidden lg:table-cell">{t("customer")}</TableHead>
                     <TableHead className="text-end">{t("mileage")}</TableHead>
+                    {(canEdit("vehicles") || canDelete("vehicles")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -64,6 +88,11 @@ export function VehiclesView() {
                       <TableCell className="hidden sm:table-cell tnum">{v.year || "—"}</TableCell>
                       <TableCell className="hidden lg:table-cell text-xs">{v.customer?.name || "—"}</TableCell>
                       <TableCell className="text-end tnum text-muted-foreground">{formatNumber(v.mileage, lang)} km</TableCell>
+                      {(canEdit("vehicles") || canDelete("vehicles")) && (
+                        <TableCell className="text-end" onClick={(e) => e.stopPropagation()}>
+                          <RowActions canEdit={canEdit("vehicles")} canDelete={canDelete("vehicles")} onEdit={() => setEditing(v)} onDelete={() => deleteVehicle(v)} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -79,6 +108,17 @@ export function VehiclesView() {
             <DialogTitle className="flex items-center gap-2">
               <Car className="h-5 w-5" />{detail?.plateNumber}
               <span className="text-sm font-normal text-muted-foreground">{detail?.make} {detail?.model} {detail?.year}</span>
+              <span className="flex-1" />
+              {detail && canEdit("vehicles") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7" title={t("edit")} onClick={() => setEditing(detail)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {detail && canDelete("vehicles") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title={t("delete")} onClick={() => deleteVehicle(detail)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </DialogTitle>
           </DialogHeader>
           {detail && (
@@ -149,7 +189,98 @@ export function VehiclesView() {
           )}
         </DialogContent>
       </Dialog>
+
+      {editing && <EditVehicleDialog vehicle={editing} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+function EditVehicleDialog({ vehicle, onClose }: { vehicle: any; onClose: () => void }) {
+  const { t } = useT();
+  const { data: cust } = useApi<any>("/api/customers");
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    customerId: vehicle.customerId || vehicle.customer?.id || "",
+    plateNumber: vehicle.plateNumber || "",
+    vin: vehicle.vin || "",
+    make: vehicle.make || "",
+    model: vehicle.model || "",
+    year: vehicle.year ? String(vehicle.year) : "",
+    color: vehicle.color || "",
+    fuelType: vehicle.fuelType || "Petrol",
+    transmission: vehicle.transmission || "",
+    mileage: String(vehicle.mileage ?? 0),
+  });
+
+  const save = async () => {
+    if (!form.customerId || !form.plateNumber.trim() || !form.make.trim() || !form.model.trim()) return toastError(t("required"));
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, year: form.year ? Number(form.year) : null, mileage: Number(form.mileage) || 0 }),
+      });
+      if (!res.ok) {
+        toastError(t("requestFailed"));
+        return;
+      }
+      invalidate(["/api/vehicles", "/api/customers", "/api/dashboard"]);
+      toastSuccess();
+      onClose();
+    } catch {
+      toastError(t("requestFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scroll-thin">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("edit")}: {vehicle.plateNumber}</DialogTitle>
+          <DialogDescription className="sr-only">{t("vehicles")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{t("customer")} *</Label>
+            <Select value={form.customerId} onValueChange={(v) => setForm({ ...form, customerId: v })}>
+              <SelectTrigger><SelectValue placeholder={t("customer")} /></SelectTrigger>
+              <SelectContent>
+                {(cust?.items || []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name} · {c.mobile}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs">{t("plateNumber")} *</Label><Input value={form.plateNumber} onChange={(e) => setForm({ ...form, plateNumber: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("vin")}</Label><Input value={form.vin} onChange={(e) => setForm({ ...form, vin: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("make")} *</Label><Input value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("model")} *</Label><Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("year")}</Label><Input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("color")}</Label><Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} /></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("fuelType")}</Label>
+              <Select value={form.fuelType} onValueChange={(v) => setForm({ ...form, fuelType: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Petrol">Petrol</SelectItem>
+                  <SelectItem value="Diesel">Diesel</SelectItem>
+                  <SelectItem value="Hybrid">Hybrid</SelectItem>
+                  <SelectItem value="Electric">Electric</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("mileage")}</Label><Input type="number" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} /></div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
+            <Button onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}{t("save")}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

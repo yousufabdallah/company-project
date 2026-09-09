@@ -1,7 +1,8 @@
 "use client";
 
 import { useT, formatMoney, formatDateTime } from "@/lib/format";
-import { useApi, useApiMutation, EmptyState, LoadingRows, PageHeader } from "@/components/shared";
+import { useApi, useApiMutation, EmptyState, LoadingRows, PageHeader, RowActions } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,21 @@ export function AccountsView() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [q, setQ] = useState("");
   const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const { canDelete } = usePermissions();
   const [withdrawDialog, setWithdrawDialog] = useState<any>(null);
+
+  const deleteTxn = async (tx: any) => {
+    if (!confirm(tx.type === "inflow" ? t("confirmDeletePayment") : t("confirmDeleteRecord"))) return;
+    try {
+      const url = tx.type === "inflow" ? `/api/payments?id=${tx.id}` : `/api/expenses?id=${tx.id}`;
+      const res = await fetch(url, { method: "DELETE" });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
+      invalidate(["/api/accounts", "/api/payments", "/api/expenses", "/api/invoices", "/api/customers", "/api/dashboard"]);
+      toastSuccess();
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const money = (n: number) => formatMoney(n, "OMR", lang);
 
@@ -234,6 +249,7 @@ export function AccountsView() {
                     <TableHead className="text-xs">{t("description")}</TableHead>
                     <TableHead className="text-xs hidden md:table-cell">{t("reference")}</TableHead>
                     <TableHead className="text-xs text-end">{t("amount")}</TableHead>
+                    <TableHead className="text-xs text-end">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -241,7 +257,7 @@ export function AccountsView() {
                     const Icon = METHOD_ICONS[tx.method === "cash" ? "banknote" : tx.method === "card" ? "credit-card" : tx.method === "bank" ? "landmark" : "wallet"];
                     const colors = METHOD_COLORS[tx.method === "cash" ? "emerald" : tx.method === "card" ? "sky" : tx.method === "bank" ? "violet" : "amber"];
                     return (
-                      <TableRow key={tx.id}>
+                      <TableRow key={`${tx.type}-${tx.id}`}>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(tx.date, lang)}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}>
@@ -269,6 +285,13 @@ export function AccountsView() {
                         <TableCell className="hidden md:table-cell text-xs font-mono text-muted-foreground">{tx.reference || tx.invoiceCode || "—"}</TableCell>
                         <TableCell className={`text-end font-semibold tnum text-xs ${tx.type === "inflow" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                           {tx.type === "inflow" ? "+" : "−"} {money(tx.amount)}
+                        </TableCell>
+                        <TableCell className="text-end">
+                          <RowActions
+                            canEdit={false}
+                            canDelete={tx.type === "inflow" ? canDelete("payments") : canDelete("expenses")}
+                            onDelete={() => deleteTxn(tx)}
+                          />
                         </TableCell>
                       </TableRow>
                     );

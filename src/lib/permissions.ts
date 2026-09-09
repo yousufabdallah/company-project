@@ -48,7 +48,7 @@ export const MODULES: ModuleDef[] = [
   { key: "services", labelKey: "services", actions: ["view", "create", "edit", "delete"] },
   { key: "accounts", labelKey: "accounts", actions: ["view"] },
   { key: "reports", labelKey: "reports", actions: ["view"] },
-  { key: "warranties", labelKey: "warranties", actions: ["view"] },
+  { key: "warranties", labelKey: "warranties", actions: ["view", "create", "edit", "delete"] },
   { key: "technicians", labelKey: "technicians", actions: ["view"] },
   { key: "auditLogs", labelKey: "auditLogs", actions: ["view"] },
   { key: "users", labelKey: "users", actions: ["view", "create", "edit", "delete"] },

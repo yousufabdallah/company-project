@@ -1,7 +1,7 @@
 "use client";
 
 import { useT, formatMoney, formatDate, formatNumber } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation } from "@/components/shared";
+import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation, RowActions } from "@/components/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApp } from "@/lib/store";
 import { usePermissions } from "@/lib/use-permissions";
 import { useMemo, useState } from "react";
-import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check, Receipt, FileText } from "lucide-react";
+import { Wrench, Plus, Search, Printer, Trash2, ArrowRight, Clock, Check, Receipt, FileText, Pencil, Loader2 } from "lucide-react";
 
 const STATUSES = ["draft", "waiting_approval", "approved", "in_progress", "waiting_parts", "waiting_customer", "quality_check", "completed", "ready_for_delivery", "delivered", "cancelled"];
 
@@ -24,13 +24,32 @@ export function JobCardsView() {
   const user = useApp((s) => s.user);
   const setView = useApp((s) => s.setView);
   const setFocusId = useApp((s) => s.setFocusId);
-  const { canCreate, canEdit } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const isTechnician = user?.role === "technician";
   const [scope, setScope] = useState<"mine" | "all">(isTechnician ? "mine" : "all");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
   const [selected, setSelected] = useState<string | null>(null);
+
+  const deleteJobCard = async (j: any) => {
+    if (!confirm(t("confirmDeleteJobCard"))) return;
+    try {
+      const res = await fetch(`/api/job-cards/${j.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error === "invoice_has_payments" ? t("invoiceHasPayments") : t("requestFailed"));
+        return;
+      }
+      invalidate(["/api/job-cards", "/api/invoices", "/api/parts", "/api/customers", "/api/dashboard"]);
+      toastSuccess();
+      if (selected === j.id) setSelected(null);
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const money = (n: number) => formatMoney(n, "OMR", lang);
   const items = (data?.items || []).filter((j: any) => {
@@ -97,6 +116,7 @@ export function JobCardsView() {
                     <TableHead>{t("status")}</TableHead>
                     <TableHead className="hidden sm:table-cell text-center">{t("invoice")}</TableHead>
                     <TableHead className="text-end">{t("grandTotal")}</TableHead>
+                    {(canEdit("jobCards") || canDelete("jobCards")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -122,6 +142,11 @@ export function JobCardsView() {
                         )}
                       </TableCell>
                       <TableCell className="text-end font-semibold tnum">{money(j.grandTotal)}</TableCell>
+                      {(canEdit("jobCards") || canDelete("jobCards")) && (
+                        <TableCell className="text-end" onClick={(e) => e.stopPropagation()}>
+                          <RowActions canEdit={canEdit("jobCards")} canDelete={canDelete("jobCards")} onEdit={() => setEditing(j)} onDelete={() => deleteJobCard(j)} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -141,12 +166,25 @@ export function JobCardsView() {
             <DialogTitle className="flex items-center gap-2">
               <Wrench className="h-5 w-5" />{detail?.code}
               {detail && <StatusBadge status={detail.status} />}
+              <span className="flex-1" />
+              {detail && canEdit("jobCards") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7" title={t("edit")} onClick={() => setEditing(detail)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {detail && canDelete("jobCards") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title={t("delete")} onClick={() => deleteJobCard(detail)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </DialogTitle>
             <DialogDescription className="sr-only">{t("jobCards")}</DialogDescription>
           </DialogHeader>
           {detail && <JobCardDetail jc={detail} money={money} onClose={() => setSelected(null)} onOpenInvoice={(id) => { setFocusId(id); setView("invoices"); }} />}
         </DialogContent>
       </Dialog>
+
+      {editing && <EditJobCardDialog job={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -294,6 +332,94 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return <div className="flex justify-between text-muted-foreground"><span>{label}</span><span className="tnum">{value}</span></div>;
+}
+
+function EditJobCardDialog({ job, onClose }: { job: any; onClose: () => void }) {
+  const { t } = useT();
+  const { data: users } = useApi<any>("/api/users");
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const [saving, setSaving] = useState(false);
+  const toLocal = (d: any) => {
+    if (!d) return "";
+    const dt = new Date(d);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  };
+  const [form, setForm] = useState({
+    complaint: job.complaint || "",
+    diagnosis: job.diagnosis || "",
+    notes: job.notes || "",
+    mileage: String(job.mileage ?? 0),
+    priority: job.priority || "normal",
+    technicianId: job.technicianId || "",
+    estimatedCompletion: toLocal(job.estimatedCompletion),
+  });
+  const techs = (users?.items || []).filter((u: any) => u.role === "technician" && u.active);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/job-cards/${job.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          mileage: Number(form.mileage) || 0,
+          technicianId: form.technicianId || null,
+          estimatedCompletion: form.estimatedCompletion || null,
+        }),
+      });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
+      invalidate(["/api/job-cards", "/api/dashboard"]);
+      toastSuccess();
+      onClose();
+    } catch {
+      toastError(t("requestFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scroll-thin">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("edit")}: {job.code}</DialogTitle>
+          <DialogDescription className="sr-only">{t("jobCards")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label className="text-xs">{t("complaint")}</Label><Input value={form.complaint} onChange={(e) => setForm({ ...form, complaint: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label className="text-xs">{t("diagnosis")}</Label><Textarea value={form.diagnosis} onChange={(e) => setForm({ ...form, diagnosis: e.target.value })} rows={2} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs">{t("mileage")}</Label><Input type="number" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("priority")}</Label>
+              <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["low", "normal", "high", "urgent"].map((p) => <SelectItem key={p} value={p}>{t("status_" + p)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("technician")}</Label>
+              <Select value={form.technicianId || "none"} onValueChange={(v) => setForm({ ...form, technicianId: v === "none" ? "" : v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">—</SelectItem>
+                  {techs.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("estimatedCompletion")}</Label><Input type="datetime-local" value={form.estimatedCompletion} onChange={(e) => setForm({ ...form, estimatedCompletion: e.target.value })} /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs">{t("notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
+            <Button onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}{t("save")}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ─── Create Dialog ─────────────────────────────────────────

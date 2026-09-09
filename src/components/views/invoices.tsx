@@ -1,25 +1,48 @@
 "use client";
 
 import { useT, formatMoney, formatDate } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation } from "@/components/shared";
+import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation, RowActions } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApp } from "@/lib/store";
 import { useState } from "react";
-import { Receipt, Plus, Search, Printer, Wallet } from "lucide-react";
+import { Receipt, Search, Printer, Wallet, Pencil, Trash2, Loader2 } from "lucide-react";
 
 export function InvoicesView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/invoices");
   const setQuickCreate = useApp((s) => s.setQuickCreate);
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<any>(null);
   const money = (n: number) => formatMoney(n, "OMR", lang);
+
+  const deleteInvoice = async (inv: any) => {
+    if (!confirm(t("confirmDeleteInvoice"))) return;
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error === "invoice_has_payments" ? t("invoiceHasPayments") : t("requestFailed"));
+        return;
+      }
+      invalidate(["/api/invoices", "/api/customers", "/api/accounts", "/api/dashboard"]);
+      toastSuccess();
+      if (selected === inv.id) setSelected(null);
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const items = (data?.items || []).filter((i: any) => {
     if (statusFilter !== "all" && i.status !== statusFilter) return false;
@@ -31,7 +54,7 @@ export function InvoicesView() {
   return (
     <div>
       <PageHeader title={t("invoices")} subtitle={`${items.length} ${t("invoices").toLowerCase()}`}>
-        <Button size="sm" variant="outline" onClick={() => setQuickCreate("payment")}><Wallet className="h-4 w-4 me-1" />{t("receivePayment")}</Button>
+        {canCreate("payments") && <Button size="sm" variant="outline" onClick={() => setQuickCreate("payment")}><Wallet className="h-4 w-4 me-1" />{t("receivePayment")}</Button>}
       </PageHeader>
 
       <Card>
@@ -66,6 +89,7 @@ export function InvoicesView() {
                     <TableHead className="text-end">{t("grandTotal")}</TableHead>
                     <TableHead className="text-end hidden lg:table-cell">{t("paid")}</TableHead>
                     <TableHead className="text-end">{t("remaining")}</TableHead>
+                    {(canEdit("invoices") || canDelete("invoices")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -79,6 +103,11 @@ export function InvoicesView() {
                       <TableCell className="text-end font-semibold tnum">{money(i.grandTotal)}</TableCell>
                       <TableCell className="text-end tnum text-emerald-600 hidden lg:table-cell">{money(i.paidAmount)}</TableCell>
                       <TableCell className={`text-end tnum font-medium ${i.grandTotal - i.paidAmount > 0 ? "text-red-600" : "text-muted-foreground"}`}>{money(i.grandTotal - i.paidAmount)}</TableCell>
+                      {(canEdit("invoices") || canDelete("invoices")) && (
+                        <TableCell className="text-end" onClick={(e) => e.stopPropagation()}>
+                          <RowActions canEdit={canEdit("invoices")} canDelete={canDelete("invoices")} onEdit={() => setEditing(i)} onDelete={() => deleteInvoice(i)} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -91,13 +120,84 @@ export function InvoicesView() {
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto scroll-thin">
           <DialogHeader className="no-print">
-            <DialogTitle className="flex items-center gap-2"><Receipt className="h-5 w-5" />{detail?.code}<StatusBadge status={detail?.status} /></DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />{detail?.code}{detail && <StatusBadge status={detail.status} />}
+              <span className="flex-1" />
+              {detail && canEdit("invoices") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 no-print" title={t("edit")} onClick={() => setEditing(detail)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              {detail && canDelete("invoices") && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive no-print" title={t("delete")} onClick={() => deleteInvoice(detail)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </DialogTitle>
             <DialogDescription className="sr-only">{t("invoices")}</DialogDescription>
           </DialogHeader>
           {detail && <InvoiceDetail inv={detail} money={money} onClose={() => setSelected(null)} />}
         </DialogContent>
       </Dialog>
+
+      {editing && <EditInvoiceDialog invoice={editing} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+function EditInvoiceDialog({ invoice, onClose }: { invoice: any; onClose: () => void }) {
+  const { t } = useT();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().slice(0, 10) : "",
+    notes: invoice.notes || "",
+    discount: String(invoice.discount ?? 0),
+  });
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate: form.dueDate || null, notes: form.notes, discount: Number(form.discount) || 0 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toastError(err.error === "invoice_has_payments" ? t("invoiceHasPayments") : t("requestFailed"));
+        return;
+      }
+      invalidate(["/api/invoices", "/api/customers", "/api/dashboard"]);
+      toastSuccess();
+      onClose();
+    } catch {
+      toastError(t("requestFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" />{t("edit")}: {invoice.code}</DialogTitle>
+          <DialogDescription className="sr-only">{t("invoices")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5"><Label className="text-xs">{t("date")}</Label><Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">{t("discount")}</Label><Input type="number" step="0.001" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} /></div>
+          </div>
+          <div className="space-y-1.5"><Label className="text-xs">{t("notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} /></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
+            <Button onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}{t("save")}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getTenantId, nextCode } from "@/lib/api";
+import { getTenantId, nextCode, writeAudit } from "@/lib/api";
+import { denyWithoutPermission } from "@/lib/guards";
 import { getTaxConfig, calculateTax, calculateGrandTotal } from "@/lib/tax";
 import { NextResponse } from "next/server";
 
@@ -54,10 +55,16 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const denied = await denyWithoutPermission("estimates", "edit");
+  if (denied) return denied;
+
   const tenantId = await getTenantId();
   const body = await req.json();
   const { id, status } = body;
-  const est = await db.estimate.updateMany({ where: { id, tenantId }, data: { status } });
-  await db.auditLog.create({ data: { tenantId, action: "estimate_status_changed", module: "estimates", record: id } });
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const existing = await db.estimate.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const est = await db.estimate.update({ where: { id }, data: { status } });
+  await writeAudit(tenantId, "estimate_status_changed", "estimates", existing.code + " → " + status);
   return NextResponse.json(est);
 }

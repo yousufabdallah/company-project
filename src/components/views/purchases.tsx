@@ -1,7 +1,8 @@
 "use client";
 
 import { useT, formatMoney, formatDate } from "@/lib/format";
-import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation } from "@/components/shared";
+import { useApi, StatusBadge, EmptyState, LoadingRows, PageHeader, useApiMutation, RowActions } from "@/components/shared";
+import { usePermissions } from "@/lib/use-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState } from "react";
-import { ShoppingCart, Plus, Trash2, Package } from "lucide-react";
+import { ShoppingCart, Plus, Trash2, Package, Pencil, Loader2 } from "lucide-react";
 
 // Local row helper (mirrors the shared Row component used by other views)
 function Row({ label, value }: { label: string; value: string }) {
@@ -20,8 +21,23 @@ function Row({ label, value }: { label: string; value: string }) {
 export function PurchasesView() {
   const { t, lang } = useT();
   const { data, isLoading } = useApi<any>("/api/purchases");
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { invalidate, toastSuccess, toastError } = useApiMutation();
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
   const money = (n: number) => formatMoney(n, "OMR", lang);
+
+  const deletePurchase = async (p: any) => {
+    if (!confirm(t("confirmDeletePurchase"))) return;
+    try {
+      const res = await fetch(`/api/purchases?id=${p.id}`, { method: "DELETE" });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
+      invalidate(["/api/purchases", "/api/parts", "/api/dashboard"]);
+      toastSuccess();
+    } catch {
+      toastError(t("requestFailed"));
+    }
+  };
 
   const purchases = data?.items || [];
   // Totals across all loaded purchases — used in the table footer.
@@ -32,7 +48,7 @@ export function PurchasesView() {
   return (
     <div>
       <PageHeader title={t("purchases")} subtitle={`${data?.items?.length ?? 0} ${t("purchases").toLowerCase()}`}>
-        <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>
+        {canCreate("purchases") && <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4 me-1" />{t("addNew")}</Button>}
       </PageHeader>
 
       <Card>
@@ -50,6 +66,7 @@ export function PurchasesView() {
                     <TableHead className="hidden sm:table-cell text-end">{t("total")}</TableHead>
                     <TableHead className="hidden sm:table-cell text-end">{t("tax")}</TableHead>
                     <TableHead className="text-end">{t("grandTotal")}</TableHead>
+                    {(canEdit("purchases") || canDelete("purchases")) && <TableHead className="text-end">{t("actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -63,6 +80,11 @@ export function PurchasesView() {
                       <TableCell className="hidden sm:table-cell text-end tnum">{money(p.total)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-end tnum text-muted-foreground">{money(p.tax)}</TableCell>
                       <TableCell className="text-end font-semibold tnum">{money(p.grandTotal)}</TableCell>
+                      {(canEdit("purchases") || canDelete("purchases")) && (
+                        <TableCell className="text-end">
+                          <RowActions canEdit={canEdit("purchases")} canDelete={canDelete("purchases")} onEdit={() => setEditing(p)} onDelete={() => deletePurchase(p)} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                   {purchases.length > 0 && (
@@ -71,6 +93,7 @@ export function PurchasesView() {
                       <TableCell className="hidden sm:table-cell text-end tnum text-xs">{money(sumTotal)}</TableCell>
                       <TableCell className="hidden sm:table-cell text-end tnum text-xs">{money(sumTax)}</TableCell>
                       <TableCell className="text-end tnum text-sm">{money(sumGrand)}</TableCell>
+                      {(canEdit("purchases") || canDelete("purchases")) && <TableCell />}
                     </TableRow>
                   )}
                 </TableBody>
@@ -80,21 +103,23 @@ export function PurchasesView() {
         </CardContent>
       </Card>
 
-      <PurchaseCreateDialog open={creating} onOpenChange={setCreating} />
+      <PurchaseDialog open={creating} onOpenChange={setCreating} />
+      {editing && <PurchaseDialog open purchase={editing} onOpenChange={(o) => !o && setEditing(null)} />}
     </div>
   );
 }
 
-function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function PurchaseDialog({ open, onOpenChange, purchase }: { open: boolean; onOpenChange: (o: boolean) => void; purchase?: any }) {
   const { t, lang } = useT();
   const { data: sup } = useApi<any>("/api/suppliers");
-  const { data: wh } = useApi<any>("/api/dashboard");
   const { data: parts } = useApi<any>("/api/parts");
   const { data: settings } = useApi<any>("/api/settings");
   const taxPercent = settings?.taxEnabled ? (settings?.taxPercent ?? 0) : 0;
   const { invalidate, toastSuccess, toastError } = useApiMutation();
-  const [supplierId, setSupplierId] = useState("");
-  const [items, setItems] = useState<any[]>([]);
+  const isEdit = !!purchase;
+  const [supplierId, setSupplierId] = useState(purchase?.supplierId || "");
+  const [status, setStatus] = useState(purchase?.status || "received");
+  const [items, setItems] = useState<any[]>(() => (purchase?.items || []).map((i: any) => ({ partId: i.partId, name: i.part?.name || i.name, quantity: i.quantity, unitCost: i.unitCost })));
   const [saving, setSaving] = useState(false);
   const money = (n: number) => formatMoney(n, "OMR", lang);
 
@@ -111,10 +136,15 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     if (!supplierId || items.length === 0) return toastError(t("required"));
     setSaving(true);
     try {
-      await fetch("/api/purchases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ supplierId, items, status: "received" }) });
+      const res = await fetch("/api/purchases", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEdit ? { id: purchase.id, supplierId, items, status } : { supplierId, items, status: "received" }),
+      });
+      if (!res.ok) { toastError(t("requestFailed")); return; }
       invalidate(["/api/purchases", "/api/parts", "/api/dashboard"]);
       toastSuccess();
-      setSupplierId(""); setItems([]);
+      if (!isEdit) { setSupplierId(""); setItems([]); }
       onOpenChange(false);
     } catch {
       toastError("Error");
@@ -127,15 +157,32 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto scroll-thin">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5" />{t("addNew")} · {t("purchases")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {isEdit ? <Pencil className="h-5 w-5" /> : <ShoppingCart className="h-5 w-5" />}
+            {isEdit ? `${t("edit")}: ${purchase.code}` : `${t("addNew")} · ${t("purchases")}`}
+          </DialogTitle>
           <DialogDescription>{t("supplier")} → {t("parts")} → {t("inventory")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5"><Label className="text-xs">{t("supplier")} *</Label>
-            <Select value={supplierId} onValueChange={setSupplierId}>
-              <SelectTrigger><SelectValue placeholder={t("supplier")} /></SelectTrigger>
-              <SelectContent>{(sup?.items || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-            </Select>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5"><Label className="text-xs">{t("supplier")} *</Label>
+              <Select value={supplierId} onValueChange={setSupplierId}>
+                <SelectTrigger><SelectValue placeholder={t("supplier")} /></SelectTrigger>
+                <SelectContent>{(sup?.items || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {isEdit && (
+              <div className="space-y-1.5"><Label className="text-xs">{t("status")}</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">{t("status_draft")}</SelectItem>
+                    <SelectItem value="received">{t("status_approved")}</SelectItem>
+                    <SelectItem value="paid">{t("status_paid")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="space-y-1.5"><Label className="text-xs">{t("parts")}</Label>
             <Select onValueChange={addPart}>
@@ -169,7 +216,10 @@ function PurchaseCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <div className="flex justify-between border-t pt-1 text-base font-bold"><span>{t("grandTotal")}</span><span className="tnum">{money(grand)}</span></div>
           </div>
 
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button><Button onClick={submit} disabled={saving}><Package className="h-4 w-4 me-1" />{t("create")}</Button></div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
+            <Button onClick={submit} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin me-1" />}{isEdit ? t("save") : <><Package className="h-4 w-4 me-1" />{t("create")}</>}</Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

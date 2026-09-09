@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getTenantId } from "@/lib/api";
+import { getTenantId, writeAudit } from "@/lib/api";
+import { denyWithoutPermission } from "@/lib/guards";
 import { NextResponse } from "next/server";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +23,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await denyWithoutPermission("jobCards", "edit");
+  if (denied) return denied;
+
   const { id } = await params;
   const tenantId = await getTenantId();
   const body = await req.json();
@@ -50,6 +54,84 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   });
 
-  await db.auditLog.create({ data: { tenantId, action: "job_card_status_changed", module: "job_cards", record: prev.code + " → " + status } });
+  await writeAudit(tenantId, "job_card_status_changed", "job_cards", prev.code + " → " + status);
+  return NextResponse.json({ ok: true });
+}
+
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await denyWithoutPermission("jobCards", "edit");
+  if (denied) return denied;
+
+  const { id } = await params;
+  const tenantId = await getTenantId();
+  const body = await req.json();
+  const existing = await db.jobCard.findFirst({ where: { id, tenantId } });
+  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const data: any = {};
+  if (body.complaint !== undefined) data.complaint = String(body.complaint || "").trim();
+  if (body.diagnosis !== undefined) data.diagnosis = body.diagnosis?.trim() || null;
+  if (body.notes !== undefined) data.notes = body.notes?.trim() || null;
+  if (body.technicianId !== undefined) data.technicianId = body.technicianId || null;
+  if (body.advisorId !== undefined) data.advisorId = body.advisorId || null;
+  if (body.mileage !== undefined) data.mileage = Number(body.mileage) || 0;
+  if (body.priority !== undefined) data.priority = body.priority || "normal";
+  if (body.estimatedCompletion !== undefined) data.estimatedCompletion = body.estimatedCompletion ? new Date(body.estimatedCompletion) : null;
+  if (body.status !== undefined) data.status = body.status;
+
+  const jc = await db.jobCard.update({
+    where: { id },
+    data,
+    include: { customer: true, vehicle: true, technician: true },
+  });
+  await writeAudit(tenantId, "updated", "job_cards", jc.code);
+  return NextResponse.json(jc);
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await denyWithoutPermission("jobCards", "delete");
+  if (denied) return denied;
+
+  const { id } = await params;
+  const tenantId = await getTenantId();
+  const existing = await db.jobCard.findFirst({
+    where: { id, tenantId },
+    include: { invoice: { include: { payments: true } }, parts: true },
+  });
+  if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (existing.invoice && (existing.invoice.paidAmount > 0 || existing.invoice.payments.length > 0)) {
+    return NextResponse.json({ error: "invoice_has_payments" }, { status: 400 });
+  }
+
+  await db.$transaction(async (tx) => {
+    for (const p of existing.parts) {
+      if (p.status === "used") {
+        await tx.part.update({ where: { id: p.partId }, data: { quantity: { increment: p.quantity } } });
+      }
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          partId: p.partId,
+          type: "return",
+          quantity: p.quantity,
+          refType: "job_card",
+          refId: id,
+          note: `Released on delete ${existing.code}`,
+        },
+      });
+    }
+    await tx.warranty.deleteMany({ where: { jobCardId: id } });
+    await tx.vehicleInspection.updateMany({ where: { jobCardId: id }, data: { jobCardId: null } });
+    if (existing.invoice) {
+      const remaining = existing.invoice.grandTotal - existing.invoice.paidAmount;
+      if (remaining !== 0) {
+        await tx.customer.update({ where: { id: existing.customerId }, data: { balance: { decrement: remaining } } });
+      }
+      await tx.invoice.delete({ where: { id: existing.invoice.id } });
+    }
+    await tx.jobCard.delete({ where: { id } });
+  });
+
+  await writeAudit(tenantId, "deleted", "job_cards", existing.code);
   return NextResponse.json({ ok: true });
 }
